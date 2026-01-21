@@ -5,7 +5,9 @@ from typing import Dict, Any, Optional
 class ConfigManager:
     _instance = None
     _config: Dict[str, Any] = {}
-    _config_path: str = "config.yaml"
+    
+    SETTINGS_FILE = "settings.yaml"
+    REGISTRY_FILE = "registry.yaml"
 
     def __new__(cls):
         if cls._instance is None:
@@ -13,63 +15,62 @@ class ConfigManager:
             cls._instance._load_config()
         return cls._instance
 
-    def _load_config(self):
-        if not os.path.exists(self._config_path):
-            raise FileNotFoundError(f"Config file not found: {self._config_path}")
+    def _load_yaml(self, path: str) -> Dict[str, Any]:
+        if not os.path.exists(path):
+            print(f"Warning: Configuration file not found: {path}")
+            return {}
         
-        with open(self._config_path, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8") as f:
             try:
-                self._config = yaml.safe_load(f)
+                return yaml.safe_load(f) or {}
             except yaml.YAMLError as e:
-                raise ValueError(f"Error parsing YAML config file: {e}")
+                raise ValueError(f"Error parsing {path}: {e}")
+
+    def _load_config(self):
+        self._settings = self._load_yaml(self.SETTINGS_FILE)
+        self._registry = self._load_yaml(self.REGISTRY_FILE)
+        
+        self._config = {**self._registry, **self._settings}
 
     @property
     def config(self) -> Dict[str, Any]:
         return self._config
 
     def get_selected_model_config(self) -> Dict[str, Any]:
-        """
-        Retrieves the configuration for the currently selected model.
-        Resolves provider information automatically.
-        """
-        selected_model_key = self._config.get("selected_model")
+        selected_model_key = self._settings.get("selected_model")
         if not selected_model_key:
-            raise ValueError("No 'selected_model' defined in config.yaml")
+            raise ValueError(f"No 'selected_model' defined in {self.SETTINGS_FILE}")
         
-        models = self._config.get("models", {})
+        models = self._registry.get("models", {})
         model_config = models.get(selected_model_key)
         
         if not model_config:
-            raise ValueError(f"Model config for '{selected_model_key}' not found in 'models' section")
+            raise ValueError(f"Model '{selected_model_key}' not found in 'models' section of {self.REGISTRY_FILE}")
             
-        # Resolve provider
         provider_key = model_config.get("provider")
         if not provider_key:
             raise ValueError(f"No 'provider' specified for model '{selected_model_key}'")
             
-        providers = self._config.get("providers", {})
+        providers = self._registry.get("providers", {})
         provider_config = providers.get(provider_key)
         
         if not provider_config:
-            raise ValueError(f"Provider '{provider_key}' not found in 'providers' section")
+            raise ValueError(f"Provider '{provider_key}' not found in 'providers' section of {self.REGISTRY_FILE}")
             
-        # Merge provider config with model config (model config takes precedence if keys conflict, though unlikely here)
         final_config = provider_config.copy()
         final_config.update(model_config)
         
         return final_config
 
     def get_dataset_path(self, task_name: str) -> str:
-        datasets = self._config.get("datasets", {})
+        datasets = self._registry.get("datasets", {})
         path = datasets.get(task_name)
         if not path:
-             # Fallback or error
              return ""
         return path
 
     def get_global_setting(self, key: str, default: Any = None) -> Any:
-        return self._config.get(key, default)
+        return self._settings.get(key, self._registry.get(key, default))
 
     def reload(self):
-        """Reload configuration from disk"""
         self._load_config()

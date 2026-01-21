@@ -9,14 +9,13 @@ from .config import ConfigManager
 
 class EvalConfig:
     def __init__(self):
-        # Load from ConfigManager automatically
         config_manager = ConfigManager()
         model_config = config_manager.get_selected_model_config()
         
         self.api_key = model_config.get("api_key")
         self.base_url = model_config.get("base_url")
         self.model_name = model_config.get("model_name")
-        self.temperature = model_config.get("temperature", 0.0)
+        self.temperature = model_config.get("temperature")
         
         self.pass_k = config_manager.get_global_setting("pass_k", 1)
         self.max_workers = config_manager.get_global_setting("workers", 1)
@@ -30,12 +29,16 @@ class LLMClient:
     def generate(self, messages: List[Dict[str, str]], max_tokens: int = 4096) -> Tuple[str, Dict[str, int]]:
         for _ in range(self.max_retries):
             try:
-                response = self.client.chat.completions.create(
-                    model=self.config.model_name,
-                    messages=messages,
-                    temperature=self.config.temperature,
-                    max_tokens=max_tokens
-                )
+                kwargs = {
+                    "model": self.config.model_name,
+                    "messages": messages,
+                    "max_tokens": max_tokens
+                }
+                
+                if self.config.temperature is not None:
+                    kwargs["temperature"] = self.config.temperature
+
+                response = self.client.chat.completions.create(**kwargs)
                 content = response.choices[0].message.content
                 if not content:
                     continue
@@ -47,7 +50,6 @@ class LLMClient:
                 }
                 return content.strip(), usage
             except Exception as e:
-                # Simple retry delay
                 time.sleep(1)
         return "", {"total_tokens": 0}
 
@@ -57,21 +59,15 @@ class BaseTask(ABC):
 
     @abstractmethod
     def load_data(self) -> List[Any]:
-        """Load data and return a list of items."""
         pass
 
     @abstractmethod
     def process_item(self, item: Any, llm_client: LLMClient) -> Dict[str, Any]:
-        """
-        Process a single item and return the result dictionary.
-        Must contain: status, duration, tokens, etc.
-        """
         pass
 
     @property
     @abstractmethod
     def log_columns(self) -> List[str]:
-        """Column names for the log file."""
         pass
 
 class Runner:
@@ -97,7 +93,6 @@ class Runner:
             logger.write_header(task.log_columns)
             
             with concurrent.futures.ThreadPoolExecutor(max_workers=self.config.max_workers) as executor:
-                # Submit tasks
                 future_to_item = {
                     executor.submit(task.process_item, item, self.llm_client): item 
                     for item in problems

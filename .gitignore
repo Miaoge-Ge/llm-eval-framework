@@ -1,4 +1,6 @@
 # Ignore config file containing secrets
+settings.yaml
+registry.yaml
 config.yaml
 
 # Ignore evaluation logs
