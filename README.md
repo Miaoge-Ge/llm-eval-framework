@@ -6,9 +6,9 @@ A lightweight, extensible, and configuration-driven framework for evaluating Lar
 
 ## Features
 
-- **Configuration-Driven**: Manage models, providers, and tasks via a simple `config.yaml`.
+- **Modular Configuration**: Separate user settings (`settings.yaml`) from resource definitions (`registry.yaml`) for better management.
 - **Provider Support**: Easily switch between different API providers (e.g., OpenAI, DeepSeek, ZhipuAI).
-- **Extensible Architecture**: Add new tasks and datasets with minimal code changes.
+- **Extensible Architecture**: Add new tasks and datasets with minimal code changes using auto-discovery.
 - **Concurrent Execution**: Fast evaluation with multi-threading support.
 - **Detailed Logging**: Comprehensive logs for debugging and analysis.
 
@@ -26,37 +26,33 @@ Clone the repository and install the dependencies:
 
 ```bash
 pip install -r requirements.txt
-# Note: You need `pyyaml`, `openai`, `tqdm`
+# Dependencies: `pyyaml`, `openai`, `tqdm`
 ```
 
 ### 2. Configuration
 
-Copy the example configuration file:
+The framework uses two configuration files:
 
-```bash
-cp config.example.yaml config.yaml
-```
+1. **`registry.yaml`**: Define your available resources (Providers, Models, Datasets).
+   ```yaml
+   providers:
+     deepseek:
+       api_key: "sk-..."
+       base_url: "https://api.deepseek.com"
+   
+   models:
+     deepseek-chat:
+       provider: "deepseek"
+       model_name: "deepseek-chat"
+       temperature: 0.0
+   ```
 
-Edit `config.yaml` to add your API keys and model preferences:
-
-```yaml
-# Global Settings
-task: "mbpp"               # Task to run
-selected_model: "my-model" # Model profile to use
-
-# Providers
-providers:
-  deepseek:
-    api_key: "sk-..."
-    base_url: "https://api.deepseek.com"
-
-# Models
-models:
-  my-model:
-    provider: "deepseek"
-    model_name: "deepseek-chat"
-    temperature: 0.0
-```
+2. **`settings.yaml`**: Control the current execution.
+   ```yaml
+   task: "mbpp"
+   selected_model: "deepseek-chat"
+   workers: 5
+   ```
 
 ### 3. Run Evaluation
 
@@ -72,7 +68,8 @@ The results will be saved in the `model_test/` directory.
 
 ```
 .
-├── config.yaml          # Main configuration file (ignored by git)
+├── settings.yaml        # User execution settings
+├── registry.yaml        # Resource definitions (Providers, Models, Datasets)
 ├── run_eval.py          # Entry point
 ├── framework/           # Core framework code
 │   ├── core.py          # Evaluation engine

@@ -6,9 +6,9 @@
 
 ## 功能特性
 
-- **配置驱动**: 通过简单的 `config.yaml` 管理模型、API厂商和任务。
+- **模块化配置**: 分离用户设置 (`settings.yaml`) 和资源定义 (`registry.yaml`)，管理更高效。
 - **多厂商支持**: 轻松切换不同的 API 提供商（如 OpenAI, DeepSeek, 智谱AI）。
-- **可扩展架构**: 只需少量代码即可添加新的评测任务和数据集。
+- **可扩展架构**: 支持自动发现机制，只需少量代码即可添加新的评测任务和数据集。
 - **并发执行**: 支持多线程并发评测，大幅提升速度。
 - **详细日志**: 提供完整的执行日志，便于调试和分析。
 
@@ -31,32 +31,28 @@ pip install -r requirements.txt
 
 ### 2. 配置
 
-复制示例配置文件：
+本框架使用两个配置文件：
 
-```bash
-cp config.example.yaml config.yaml
-```
+1. **`registry.yaml`**: 定义可用的资源（API厂商、模型、数据集）。
+   ```yaml
+   providers:
+     deepseek:
+       api_key: "sk-..."
+       base_url: "https://api.deepseek.com"
+   
+   models:
+     deepseek-chat:
+       provider: "deepseek"
+       model_name: "deepseek-chat"
+       temperature: 0.0
+   ```
 
-编辑 `config.yaml`，填入您的 API Key 和模型配置：
-
-```yaml
-# 全局设置
-task: "mbpp"               # 要运行的任务
-selected_model: "my-model" # 选择使用的模型配置
-
-# 厂商配置 (Providers)
-providers:
-  deepseek:
-    api_key: "sk-..."
-    base_url: "https://api.deepseek.com"
-
-# 模型配置 (Models)
-models:
-  my-model:
-    provider: "deepseek"
-    model_name: "deepseek-chat"
-    temperature: 0.0
-```
+2. **`settings.yaml`**: 控制当前的运行参数。
+   ```yaml
+   task: "mbpp"
+   selected_model: "deepseek-chat"
+   workers: 5
+   ```
 
 ### 3. 运行评测
 
@@ -72,7 +68,8 @@ python run_eval.py
 
 ```
 .
-├── config.yaml          # 主配置文件 (Git 已忽略)
+├── settings.yaml        # 用户运行设置
+├── registry.yaml        # 资源定义 (厂商, 模型, 数据集)
 ├── run_eval.py          # 程序入口
 ├── framework/           # 核心框架代码
 │   ├── core.py          # 评测引擎
