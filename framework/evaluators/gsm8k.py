@@ -2,28 +2,14 @@ import json
 import time
 import re
 from typing import List, Dict, Any
-from ..core import BaseTask, LLMClient
+from ..core import ReasoningTask, LLMClient
 from ..utils import format_time
 from ..registry import TaskRegistry
 
 @TaskRegistry.register("gsm")
-class GSM8KTask(BaseTask):
+class GSM8KTask(ReasoningTask):
     def __init__(self, dataset_path):
         super().__init__(dataset_path)
-
-    def load_data(self) -> List[Any]:
-        problems = []
-        with open(self.dataset_path, "r", encoding="utf-8") as f:
-            for i, line in enumerate(f):
-                if line.strip():
-                    data = json.loads(line)
-                    data["_index"] = i # 增加索引
-                    problems.append(data)
-        return problems
-
-    @property
-    def log_columns(self) -> List[str]:
-        return ["id", "status", "ground_truth", "model_prediction", "duration", "tokens"]
 
     def process_item(self, item: Any, llm_client: LLMClient) -> Dict[str, Any]:
         index = item["_index"]
@@ -37,13 +23,26 @@ class GSM8KTask(BaseTask):
         messages = [{"role": "user", "content": user_prompt}]
         
         start_time = time.time()
-        completion, usage = llm_client.generate(messages)
+        completion, usage, error_msg = llm_client.generate(messages)
         duration = time.time() - start_time
         
+        if error_msg:
+            return {
+                "id": index,
+                "status": "CRITICAL_API_FAILURE",
+                "error_msg": error_msg,
+                "ground_truth": ground_truth_val,
+                "model_prediction": "Error",
+                "duration": format_time(duration),
+                "duration_raw": duration,
+                "tokens": 0
+            }
+
         if not completion:
             return {
                 "id": index,
-                "status": "API_FAILED",
+                "status": "CRITICAL_API_FAILURE", # Changed from API_FAILED to CRITICAL_API_FAILURE
+                "error_msg": "Empty completion (Possible Content Filter or Overload)",
                 "ground_truth": ground_truth_val,
                 "model_prediction": "None",
                 "duration": format_time(duration),

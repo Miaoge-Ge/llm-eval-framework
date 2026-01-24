@@ -41,6 +41,7 @@ class ConfigManager:
         if not selected_model_key:
             raise ValueError(f"No 'selected_model' defined in {self.SETTINGS_FILE}")
         
+        # 1. Base Model Info (from Registry)
         models = self._registry.get("models", {})
         model_config = models.get(selected_model_key)
         
@@ -57,8 +58,14 @@ class ConfigManager:
         if not provider_config:
             raise ValueError(f"Provider '{provider_key}' not found in 'providers' section of {self.REGISTRY_FILE}")
             
+        # 2. Merge: Provider -> Model (Registry) -> Settings (Override)
         final_config = provider_config.copy()
         final_config.update(model_config)
+        
+        # Override with specific runtime settings if present in settings.yaml
+        for override_key in ["temperature", "rpm_limit", "tpm_limit"]:
+            if override_key in self._settings:
+                final_config[override_key] = self._settings[override_key]
         
         return final_config
 

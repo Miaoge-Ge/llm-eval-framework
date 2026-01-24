@@ -3,9 +3,11 @@ settings.yaml
 registry.yaml
 config.yaml
 
-# Ignore evaluation logs
+# Ignore evaluation logs and results
 model_test/
 *.log
+*.tsv
+*.jsonl
 
 # Python cache
 __pycache__/
@@ -18,3 +20,7 @@ __pycache__/
 
 # Environment variables
 .env
+
+# System files
+.DS_Store
+Thumbs.db
