@@ -30,6 +30,7 @@ def main():
         print(f"  Model Name: {config.model_name}")
         print(f"  Dataset: {dataset_path}")
         print(f"  Workers: {config.max_workers}")
+        print(f"  Stream: {config.stream}")
 
         task_cls = TaskRegistry.get(task_name)
         if not task_cls:

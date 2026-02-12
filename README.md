@@ -95,6 +95,16 @@ Run the evaluation script:
 python run_eval.py
 ```
 
+## Streaming
+
+Control streaming via `settings.yaml`:
+
+```yaml
+stream: true
+```
+Set `STREAM` to `1/true/yes/on` to enable streaming, or `0/false/no/off` to disable (default).
+Set `stream` to `true/1/yes/on` to enable streaming, or `false/0/no/off` to disable (default).
+
 ### Output
 
 Results are saved in `model_test/<model_name>/<task_name>_<timestamp>.log`.

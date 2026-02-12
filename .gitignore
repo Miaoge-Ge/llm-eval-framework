@@ -6,7 +6,6 @@ registry.yaml
 model_test/
 *.log
 *.tsv
-*.jsonl
 
 # Python cache
 __pycache__/

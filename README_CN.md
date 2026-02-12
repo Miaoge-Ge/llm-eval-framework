@@ -95,6 +95,15 @@ tpm_limit: 100000    # 每分钟最大 Token 数
 python run_eval.py
 ```
 
+## Stream（流式调用）
+
+通过 `settings.yaml` 控制是否使用流式调用：
+
+```yaml
+stream: true
+```
+将 `stream` 设为 `true/1/yes/on` 表示开启，设为 `false/0/no/off` 表示关闭（默认关闭）。
+
 ### 输出结果
 
 评测结果将保存在 `model_test/<model_name>/<task_name>_<timestamp>.log`。

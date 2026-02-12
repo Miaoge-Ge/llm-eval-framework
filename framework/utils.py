@@ -5,6 +5,55 @@ import subprocess
 import sys
 from typing import Tuple
 
+def load_dotenv(dotenv_path: str = ".env", override: bool = False) -> bool:
+    if not os.path.exists(dotenv_path):
+        return False
+
+    with open(dotenv_path, "r", encoding="utf-8") as f:
+        for raw_line in f:
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("export "):
+                line = line[len("export "):].lstrip()
+            if "=" not in line:
+                continue
+
+            key, val = line.split("=", 1)
+            key = key.strip()
+            if not key:
+                continue
+
+            val = val.strip()
+            if val and len(val) >= 2 and val[0] == val[-1] and val[0] in {"'", '"'}:
+                val = val[1:-1]
+
+            if not override and key in os.environ:
+                continue
+            os.environ[key] = val
+
+    return True
+
+def _safe_path_segment(name: str) -> str:
+    if name is None:
+        return "unknown"
+    s = str(name).strip()
+    if not s:
+        return "unknown"
+
+    invalid = '<>:"/\\|?*'
+    cleaned = []
+    for ch in s:
+        o = ord(ch)
+        if o < 32 or ch in invalid:
+            cleaned.append("_")
+        else:
+            cleaned.append(ch)
+
+    s = "".join(cleaned)
+    s = s.rstrip(" .")
+    return s if s else "unknown"
+
 def format_time(seconds: float) -> str:
     m, s = divmod(int(seconds), 60)
     h, m = divmod(m, 60)
@@ -16,10 +65,12 @@ class Logger:
         self.model_name = model_name
         self.task_name = task_name
 
-        self.output_dir = os.path.join("model_test", model_name)
+        safe_model_name = _safe_path_segment(model_name)
+        self.output_dir = os.path.join("model_test", safe_model_name)
         os.makedirs(self.output_dir, exist_ok=True)
 
-        self.log_path = os.path.join(self.output_dir, f"{task_name}_{self.timestamp}.log")
+        safe_task_name = _safe_path_segment(task_name)
+        self.log_path = os.path.join(self.output_dir, f"{safe_task_name}_{self.timestamp}.log")
         self.log_handle = None
 
     def __enter__(self):
@@ -54,7 +105,7 @@ class Logger:
             self.log_handle.write("\n" + "=" * 60 + "\n")
             self.log_handle.write(summary + "\n")
             self.log_handle.flush()
-        print(summary)
+        return
 
     def get_log_path(self):
         return os.path.abspath(self.log_path)

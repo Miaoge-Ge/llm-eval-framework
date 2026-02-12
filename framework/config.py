@@ -99,7 +99,7 @@ class ConfigManager:
         return path
 
     def get_global_setting(self, key: str, default: Any = None) -> Any:
-        return self._settings.get(key, self._registry.get(key, default))
+        return self._settings.get(key, default)
 
     def reload(self):
         self._load_config()

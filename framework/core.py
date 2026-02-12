@@ -25,9 +25,26 @@ class EvalConfig:
         
         self.pass_k = config_manager.get_global_setting("pass_k", 1)
         self.max_workers = config_manager.get_global_setting("workers", 1)
+
+        stream_setting = config_manager.get_global_setting("stream", False)
+        self.stream = self._parse_bool(stream_setting, default=False)
         
         self.input_cost_per_m = model_config.get("input_cost_per_m", 0.0)
         self.output_cost_per_m = model_config.get("output_cost_per_m", 0.0)
+
+    def _parse_bool(self, val: Any, default: bool = False) -> bool:
+        if val is None:
+            return default
+        if isinstance(val, bool):
+            return val
+        if isinstance(val, (int, float)):
+            return bool(val)
+        s = str(val).strip().lower()
+        if s in {"1", "true", "yes", "y", "on"}:
+            return True
+        if s in {"0", "false", "no", "n", "off"}:
+            return False
+        return default
 
 class LLMClient:
     def __init__(self, config: EvalConfig):
@@ -35,6 +52,30 @@ class LLMClient:
         self.client = OpenAI(api_key=config.api_key, base_url=config.base_url)
         self.max_retries = 3
         self.rate_limiter = RateLimiter(rpm_limit=config.rpm_limit, tpm_limit=config.tpm_limit)
+
+    def _consume_stream(self, stream) -> Tuple[str, Dict[str, int]]:
+        parts: List[str] = []
+        final_usage = None
+        for chunk in stream:
+            if getattr(chunk, "usage", None):
+                final_usage = chunk.usage
+            choices = getattr(chunk, "choices", None)
+            if not choices:
+                continue
+            delta = getattr(choices[0], "delta", None)
+            if not delta:
+                continue
+            piece = getattr(delta, "content", None)
+            if piece:
+                parts.append(piece)
+
+        content = "".join(parts).strip()
+        usage = {
+            "prompt_tokens": getattr(final_usage, "prompt_tokens", 0) if final_usage else 0,
+            "completion_tokens": getattr(final_usage, "completion_tokens", 0) if final_usage else 0,
+            "total_tokens": getattr(final_usage, "total_tokens", 0) if final_usage else 0,
+        }
+        return content, usage
 
     def generate(self, messages: List[Dict[str, str]], max_tokens: int = 4096) -> Tuple[str, Dict[str, int], Optional[str]]:
         estimated_input_chars = sum(len(m["content"]) for m in messages)
@@ -54,17 +95,26 @@ class LLMClient:
                 if self.config.temperature is not None:
                     kwargs["temperature"] = self.config.temperature
 
-                response = self.client.chat.completions.create(**kwargs)
-                content = response.choices[0].message.content
-                if not content:
-                    continue
-                
-                usage = {
-                    "prompt_tokens": response.usage.prompt_tokens if response.usage else 0,
-                    "completion_tokens": response.usage.completion_tokens if response.usage else 0,
-                    "total_tokens": response.usage.total_tokens if response.usage else 0
-                }
-                return content.strip(), usage, None
+                if self.config.stream:
+                    kwargs["stream"] = True
+                    kwargs["stream_options"] = {"include_usage": True}
+                    stream = self.client.chat.completions.create(**kwargs)
+                    content, usage = self._consume_stream(stream)
+                    if not content:
+                        continue
+                    return content, usage, None
+                else:
+                    response = self.client.chat.completions.create(**kwargs)
+                    content = response.choices[0].message.content
+                    if not content:
+                        continue
+                    
+                    usage = {
+                        "prompt_tokens": response.usage.prompt_tokens if response.usage else 0,
+                        "completion_tokens": response.usage.completion_tokens if response.usage else 0,
+                        "total_tokens": response.usage.total_tokens if response.usage else 0
+                    }
+                    return content.strip(), usage, None
             except Exception as e:
                 error_str = str(e)
                 # Regex to handle both single and double quoted string representations of the dict
@@ -228,7 +278,9 @@ class Runner:
             wall_time = end_time_wall - start_time_wall
             
             if self.api_failure_occurred:
-                logger.log_summary("\n[!] Evaluation Aborted due to Critical API Failure.")
+                abort_msg = "\n[!] Evaluation Aborted due to Critical API Failure."
+                logger.log_summary(abort_msg)
+                print(abort_msg)
             
             self._print_summary(logger, task_name, passed_count, failed_count, api_failed_count, empty_response_count, internal_error_count, len(problems),
                               total_duration, total_prompt_tokens, total_completion_tokens, total_tokens, wall_time)
@@ -299,3 +351,4 @@ class Runner:
             f"{'=' * 60}\n"
         )
         logger.log_summary(summary)
+        print(summary, end="")
