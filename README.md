@@ -1,150 +1,169 @@
-# LLM Evaluation Framework
-
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/)
-
-A lightweight, configuration-driven, and extensible framework for evaluating Large Language Models (LLMs). Designed for efficiency and ease of use, it supports multi-provider concurrent evaluation, rate limiting, and detailed performance metrics.
+# LLM Eval Framework
 
 [中文文档](README_CN.md)
 
-## ✨ Key Features
+A clean evaluation framework for code and reasoning benchmarks with `uv`-managed environments, a minimal model config, structured output artifacts, and optional thinking mode for OpenAI-compatible endpoints.
 
-- **Multi-Model & Multi-Provider Support**: Seamlessly switch between OpenAI, DeepSeek, ZhipuAI (GLM), and other OpenAI-compatible APIs.
-- **Concurrent Execution**: High-performance multi-threaded evaluation with configurable worker count.
-- **Smart Rate Limiting**: Built-in Token Bucket algorithm for precise RPM (Requests Per Minute) and TPM (Tokens Per Minute) control.
-- **Robust Error Handling**: Automatic retry mechanism, intelligent error parsing, and graceful handling of critical API failures (e.g., Auth Error, Rate Limit).
-- **Rich Metrics**:
-  - **Accuracy (Pass@1)**
-  - **Throughput (Tokens/sec)**
-  - **Latency (Avg duration per task)**
-  - **Detailed Logs**: Per-task results + final summary in a single log file.
-- **Extensible Architecture**: Easily add new tasks (Code Generation, Reasoning, etc.) by inheriting from base classes.
-- **Configuration Hierarchy**: Flexible `registry.yaml` (static resources) + `settings.yaml` (runtime overrides) architecture.
+## Highlights
 
-## 🚀 Supported Tasks
+- `uv` as the default environment and dependency workflow
+- Single model config file
+- Built-in support for `humaneval`, `humanevalplus`, `mbpp`, and `gsm`
+- OpenAI-compatible client interface
+- Structured run artifacts in JSON and JSONL
+- Optional thinking mode with `reasoning_effort`
+- Immediate startup logs and live progress output during evaluation
 
-- **Code Generation**:
-  - [HumanEval](https://github.com/openai/human-eval)
-  - [MBPP](https://github.com/google-research/google-research/tree/master/mbpp)
-- **Mathematical Reasoning**:
-  - [GSM8K](https://github.com/openai/grade-school-math)
+## Project structure
 
-## 📦 Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/your-username/llm-eval-framework.git
-   cd llm-eval-framework
-   ```
-
-2. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-## ⚙️ Configuration
-
-The framework uses a two-layer configuration system:
-
-1.  **`registry.yaml`**: Defines available Providers, Models, and Datasets.
-2.  **`settings.yaml`**: Controls runtime behavior and overrides model parameters.
-
-### 1. Setup Registry (`registry.yaml`)
-
-Define your API keys and model endpoints here.
-
-```yaml
-providers:
-  deepseek:
-    api_key: "YOUR_DEEPSEEK_KEY"
-    base_url: "https://api.deepseek.com"
-
-models:
-  deepseek-chat:
-    provider: "deepseek"
-    model_name: "deepseek-chat"
-
-datasets:
-  humaneval: "./dataset/HumanEval.jsonl"
+```text
+llm_eval/
+  cli.py
+  clients.py
+  reporting.py
+  runner.py
+  settings.py
+  tasks.py
+  utils.py
+configs/
+  model.yaml
+datasets/
+tests/
 ```
 
-### 2. Configure Runtime (`settings.yaml`)
+## Install
 
-Select which task and model to run, and tune performance parameters.
-
-```yaml
-# Select Task and Model
-task: "humaneval"
-selected_model: "deepseek-chat"
-
-# Execution Settings
-workers: 10          # Number of concurrent threads
-pass_k: 1            # Pass@k metric (Default: 1)
-
-# Runtime Overrides (Optional)
-temperature: 0.0     # Override model temperature
-rpm_limit: 60        # Max requests per minute
-tpm_limit: 100000    # Max tokens per minute
-```
-
-## ▶️ Usage
-
-Run the evaluation script:
+Recommended:
 
 ```bash
-python run_eval.py
+uv sync
 ```
 
-## Streaming
+Install with dev dependencies:
 
-Control streaming via `settings.yaml`:
+```bash
+uv sync --extra dev
+```
+
+Run commands through the managed environment:
+
+```bash
+uv run python -m llm_eval run --config configs/model.yaml --task mbpp
+```
+
+## Model config
+
+The framework uses a single config file: [configs/model.yaml](/C:/Users/15080/Desktop/tests/llm-eval-framework/configs/model.yaml)
 
 ```yaml
-stream: true
+base_url: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+api_key: ${OPENAI_API_KEY}
+model_name: gpt-4.1-mini
+workers: 10
+thinking_enabled: false
+reasoning_effort:
 ```
-Set `STREAM` to `1/true/yes/on` to enable streaming, or `0/false/no/off` to disable (default).
-Set `stream` to `true/1/yes/on` to enable streaming, or `false/0/no/off` to disable (default).
 
-### Output
+Runtime settings kept in YAML:
 
-Results are saved in `model_test/<model_name>/<task_name>_<timestamp>.log`.
+- `base_url`
+- `api_key`
+- `model_name`
+- `workers`
+- `thinking_enabled`
+- `reasoning_effort`
 
-**Console Summary Example:**
+The output directory is fixed to:
+
 ```text
-==================================================
-Evaluation Summary
---------------------
-Tasks Total: 164
-Tasks Processed: 164
-Passed: 100
-Failed: 64
-API Errors: 0
-Accuracy: 60.98%
-
-Performance Metrics
---------------------
-Wall Clock Time: 01:10:05
-Throughput: 1500.5 tokens/sec
-Total Tokens: 125000
-
-Results saved to: model_test/deepseek-chat/humaneval_20240101_120000
-==================================================
+results/<MODEL_NAME>/
 ```
 
-## 🛠️ Adding New Tasks
+## Thinking mode
 
-Inherit from `CodeGenerationTask` or `ReasoningTask` to add custom evaluations.
+For providers that support it, the client can send:
+
+- `reasoning_effort="low|medium|high"`
+- `extra_body={"thinking": {"type": "enabled"}}`
+
+Equivalent SDK style:
 
 ```python
-from framework.core import CodeGenerationTask, TaskRegistry
+from openai import OpenAI
 
-@TaskRegistry.register("my_custom_task")
-class MyTask(CodeGenerationTask):
-    def process_item(self, item, llm_client):
-        # Your evaluation logic here
-        pass
+client = OpenAI(api_key="...", base_url="https://api.deepseek.com")
+
+response = client.chat.completions.create(
+    model="deepseek-v4-pro",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant"},
+        {"role": "user", "content": "Hello"},
+    ],
+    reasoning_effort="high",
+    extra_body={"thinking": {"type": "enabled"}},
+)
 ```
 
-## 📄 License
+Framework usage:
 
-This project is licensed under the MIT License.
+```bash
+uv run python -m llm_eval run --config configs/model.yaml --task humaneval
+```
+
+## CLI
+
+Run a specific benchmark:
+
+```bash
+uv run python -m llm_eval run --config configs/model.yaml --task gsm
+```
+
+Use a custom model config:
+
+```bash
+uv run python -m llm_eval run --config configs/model.yaml --task mbpp
+```
+
+The command intentionally stays minimal:
+
+```bash
+uv run python -m llm_eval run --config configs/model.yaml --task humaneval
+```
+
+When a run starts, the framework prints:
+
+- selected task
+- selected model
+- dataset path
+- worker count
+- thinking mode
+- output directory
+- live progress updates while cases are being processed
+
+## Outputs
+
+Each run writes to:
+
+```text
+results/<model_name>/
+```
+
+Artifacts:
+
+- `<task>_results.jsonl`
+- `<task>_summary.json`
+- `<task>_report.md`
+- `resolved_config.json`
+
+## Supported tasks
+
+- `humaneval`
+- `humanevalplus`
+- `mbpp`
+- `gsm`
+
+## Tests
+
+```bash
+uv run pytest -q
+```

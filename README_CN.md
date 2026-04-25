@@ -1,149 +1,169 @@
-# LLM Evaluation Framework (LLM 评测框架)
-
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/)
-
-轻量级、配置驱动且易于扩展的大语言模型（LLM）评测框架。专为高效和易用性设计，支持多模型并发评测、精确的速率限制以及详尽的性能指标分析。
+# LLM Eval Framework
 
 [English Documentation](README.md)
 
-## ✨ 核心特性
+一个面向工程使用的 LLM 评测框架，默认使用 `uv` 管理环境，主打极简模型配置、结构化结果产物，以及支持 OpenAI-compatible 接口的思考模式。
 
-- **多模型与多供应商支持**：无缝切换 OpenAI、DeepSeek、ZhipuAI (GLM) 以及其他兼容 OpenAI 接口的 API。
-- **高并发执行**：基于多线程的高性能评测引擎，支持自定义并发数。
-- **智能速率限制**：内置令牌桶（Token Bucket）算法，支持精确的 RPM（每分钟请求数）和 TPM（每分钟 Token 数）控制。
-- **健壮的错误处理**：自动重试机制、智能错误解析，以及对致命 API 错误（如认证失败、超限）的优雅处理与退出。
-- **丰富的指标体系**：
-  - **准确率 (Accuracy/Pass@1)**
-  - **吞吐量 (Throughput - Tokens/sec)**
-  - **延迟 (Latency - 平均任务耗时)**
-  - **统一日志**：单个日志文件包含逐条结果与最终汇总。
-- **可扩展架构**：通过继承基类，轻松添加新的评测任务（如代码生成、逻辑推理等）。
-- **分层配置系统**：`registry.yaml`（静态资源）+ `settings.yaml`（运行时覆盖）的双层配置架构。
+## 特点
 
-## 🚀 支持的任务
+- 默认使用 `uv` 管理依赖与运行环境
+- 单一模型配置文件
+- 内置 `humaneval`、`humanevalplus`、`mbpp`、`gsm`
+- OpenAI-compatible 调用方式
+- 每次运行都会产出结构化 JSON / JSONL
+- 支持 `thinking` 与 `reasoning_effort`
+- 启动即打印关键信息，评测过程中持续输出进度
 
-- **代码生成 (Code Generation)**:
-  - [HumanEval](https://github.com/openai/human-eval)
-  - [MBPP](https://github.com/google-research/google-research/tree/master/mbpp)
-- **数学推理 (Mathematical Reasoning)**:
-  - [GSM8K](https://github.com/openai/grade-school-math)
+## 目录结构
 
-## 📦 安装指南
-
-1. **克隆仓库**
-   ```bash
-   git clone https://github.com/your-username/llm-eval-framework.git
-   cd llm-eval-framework
-   ```
-
-2. **安装依赖**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-## ⚙️ 配置指南
-
-本框架采用双层配置系统：
-
-1.  **`registry.yaml`**: 定义可用的供应商（Providers）、模型（Models）和数据集（Datasets）。
-2.  **`settings.yaml`**: 控制运行时行为，并可覆盖模型参数。
-
-### 1. 注册资源 (`registry.yaml`)
-
-在此文件中定义您的 API Key 和模型端点。
-
-```yaml
-providers:
-  deepseek:
-    api_key: "YOUR_DEEPSEEK_KEY"
-    base_url: "https://api.deepseek.com"
-
-models:
-  deepseek-chat:
-    provider: "deepseek"
-    model_name: "deepseek-chat"
-
-datasets:
-  humaneval: "./dataset/HumanEval.jsonl"
+```text
+llm_eval/
+  cli.py
+  clients.py
+  reporting.py
+  runner.py
+  settings.py
+  tasks.py
+  utils.py
+configs/
+  model.yaml
+datasets/
+tests/
 ```
 
-### 2. 运行时配置 (`settings.yaml`)
+## 安装
 
-选择要运行的任务和模型，并调整性能参数。
-
-```yaml
-# 选择任务和模型
-task: "humaneval"
-selected_model: "deepseek-chat"
-
-# 执行设置
-workers: 10          # 并发线程数
-pass_k: 1            # Pass@k 指标 (默认: 1)
-
-# 运行时参数覆盖 (可选)
-temperature: 0.0     # 覆盖模型的 temperature
-rpm_limit: 60        # 每分钟最大请求数
-tpm_limit: 100000    # 每分钟最大 Token 数
-```
-
-## ▶️ 使用方法
-
-运行评测脚本：
+推荐方式：
 
 ```bash
-python run_eval.py
+uv sync
 ```
 
-## Stream（流式调用）
+安装开发依赖：
 
-通过 `settings.yaml` 控制是否使用流式调用：
+```bash
+uv sync --extra dev
+```
+
+通过 `uv` 管理的环境执行命令：
+
+```bash
+uv run python -m llm_eval run --config configs/model.yaml --task mbpp
+```
+
+## 模型配置
+
+框架只保留一个配置文件：[configs/model.yaml](/C:/Users/15080/Desktop/tests/llm-eval-framework/configs/model.yaml)
 
 ```yaml
-stream: true
+base_url: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+api_key: ${OPENAI_API_KEY}
+model_name: gpt-4.1-mini
+workers: 10
+thinking_enabled: false
+reasoning_effort:
 ```
-将 `stream` 设为 `true/1/yes/on` 表示开启，设为 `false/0/no/off` 表示关闭（默认关闭）。
 
-### 输出结果
+YAML 中保留的运行配置：
 
-评测结果将保存在 `model_test/<model_name>/<task_name>_<timestamp>.log`。
+- `base_url`
+- `api_key`
+- `model_name`
+- `workers`
+- `thinking_enabled`
+- `reasoning_effort`
 
-**控制台摘要示例:**
+输出目录固定为：
+
 ```text
-==================================================
-Evaluation Summary
---------------------
-Tasks Total: 164
-Tasks Processed: 164
-Passed: 100
-Failed: 64
-API Errors: 0
-Accuracy: 60.98%
-
-Performance Metrics
---------------------
-Wall Clock Time: 01:10:05
-Throughput: 1500.5 tokens/sec
-Total Tokens: 125000
-
-Results saved to: model_test/deepseek-chat/humaneval_20240101_120000
-==================================================
+results/<MODEL_NAME>/
 ```
 
-## 🛠️ 添加新任务
+## 思考模式
 
-只需继承 `CodeGenerationTask` 或 `ReasoningTask` 即可轻松扩展。
+对于支持该能力的服务端，框架会发送：
+
+- `reasoning_effort="low|medium|high"`
+- `extra_body={"thinking": {"type": "enabled"}}`
+
+对应的 SDK 调用形式类似：
 
 ```python
-from framework.core import CodeGenerationTask, TaskRegistry
+from openai import OpenAI
 
-@TaskRegistry.register("my_custom_task")
-class MyTask(CodeGenerationTask):
-    def process_item(self, item, llm_client):
-        # 在此实现您的评测逻辑
-        pass
+client = OpenAI(api_key="...", base_url="https://api.deepseek.com")
+
+response = client.chat.completions.create(
+    model="deepseek-v4-pro",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant"},
+        {"role": "user", "content": "Hello"},
+    ],
+    reasoning_effort="high",
+    extra_body={"thinking": {"type": "enabled"}},
+)
 ```
 
-## 📄 许可证
+在框架里开启方式：
 
-本项目基于 MIT 许可证开源。
+```bash
+uv run python -m llm_eval run --config configs/model.yaml --task humaneval
+```
+
+## CLI 用法
+
+运行指定任务：
+
+```bash
+uv run python -m llm_eval run --config configs/model.yaml --task gsm
+```
+
+指定模型配置文件：
+
+```bash
+uv run python -m llm_eval run --config configs/model.yaml --task mbpp
+```
+
+最终命令格式保持最小化：
+
+```bash
+uv run python -m llm_eval run --config configs/model.yaml --task humaneval
+```
+
+命令启动后会立即打印：
+
+- 当前任务
+- 当前模型
+- 数据集路径
+- 并发数
+- 思考模式
+- 输出目录
+- 运行中的实时进度
+
+## 输出产物
+
+每次运行都会写入：
+
+```text
+results/<model_name>/
+```
+
+其中包含：
+
+- `<task>_results.jsonl`
+- `<task>_summary.json`
+- `<task>_report.md`
+- `resolved_config.json`
+
+## 当前支持任务
+
+- `humaneval`
+- `humanevalplus`
+- `mbpp`
+- `gsm`
+
+## 测试
+
+```bash
+uv run pytest -q
+```

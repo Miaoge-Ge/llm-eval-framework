@@ -15,6 +15,9 @@ __pycache__/
 .trae/
 .vscode/
 .idea/
+.cache/
+.venv/
+.pytest_cache/
 
 # Environment variables
 .env
@@ -23,4 +26,5 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-test/
+results/
+configs/
