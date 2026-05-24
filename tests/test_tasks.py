@@ -12,7 +12,7 @@ def test_humaneval_reinjects_prompt_signature(fake_config):
     case = TaskCase(
         case_id="HumanEval/0",
         payload={
-            "prompt": "def add(a, b):\n    \"\"\"add\"\"\"\n",
+            "prompt": 'def add(a, b):\n    """add"""\n',
             "entry_point": "add",
             "test": "def check(candidate):\n    assert candidate(1, 2) == 3",
         },

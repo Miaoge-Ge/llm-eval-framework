@@ -51,7 +51,7 @@ class ResultWriter:
     def write_report(self, content: str) -> None:
         self.paths.report_md.write_text(content, encoding="utf-8")
 
-    def __enter__(self) -> "ResultWriter":
+    def __enter__(self) -> ResultWriter:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:

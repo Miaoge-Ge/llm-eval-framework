@@ -1,7 +1,5 @@
-from pathlib import Path
-
-from llm_eval.utils import repo_root
 from llm_eval.settings import load_framework_config
+from llm_eval.utils import repo_root
 
 
 def test_load_framework_config_resolves_env(tmp_path, monkeypatch):

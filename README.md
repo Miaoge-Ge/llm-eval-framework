@@ -7,12 +7,14 @@ A clean evaluation framework for code and reasoning benchmarks with `uv`-managed
 ## Highlights
 
 - `uv` as the default environment and dependency workflow
+- Installable package (`hatchling` build backend) with a `llm-eval` console script
 - Single model config file
 - Built-in support for `humaneval`, `humanevalplus`, `mbpp`, and `gsm`
 - OpenAI-compatible client interface
 - Structured run artifacts in JSON and JSONL
 - Optional thinking mode with `reasoning_effort`
 - Immediate startup logs and live progress output during evaluation
+- Quality tooling wired in: `ruff` (lint + format), `mypy` (type checking), `pytest`
 
 ## Project structure
 
@@ -29,6 +31,7 @@ configs/
   model.yaml
 datasets/
 tests/
+pyproject.toml
 ```
 
 ## Install
@@ -39,7 +42,7 @@ Recommended:
 uv sync
 ```
 
-Install with dev dependencies:
+Install with dev dependencies (`pytest`, `ruff`, `mypy` and type stubs):
 
 ```bash
 uv sync --extra dev
@@ -48,6 +51,8 @@ uv sync --extra dev
 Run commands through the managed environment:
 
 ```bash
+uv run llm-eval run --config configs/model.yaml --task mbpp
+# equivalent module form
 uv run python -m llm_eval run --config configs/model.yaml --task mbpp
 ```
 
@@ -63,6 +68,8 @@ workers: 10
 thinking_enabled: false
 reasoning_effort:
 ```
+
+Prefer `${ENV_VAR}` placeholders for secrets so the API key is never committed to disk.
 
 Runtime settings kept in YAML:
 
@@ -107,7 +114,7 @@ response = client.chat.completions.create(
 Framework usage:
 
 ```bash
-uv run python -m llm_eval run --config configs/model.yaml --task humaneval
+uv run llm-eval run --config configs/model.yaml --task humaneval
 ```
 
 ## CLI
@@ -115,19 +122,19 @@ uv run python -m llm_eval run --config configs/model.yaml --task humaneval
 Run a specific benchmark:
 
 ```bash
-uv run python -m llm_eval run --config configs/model.yaml --task gsm
+uv run llm-eval run --config configs/model.yaml --task gsm
 ```
 
 Use a custom model config:
 
 ```bash
-uv run python -m llm_eval run --config configs/model.yaml --task mbpp
+uv run llm-eval run --config configs/model.yaml --task mbpp
 ```
 
 The command intentionally stays minimal:
 
 ```bash
-uv run python -m llm_eval run --config configs/model.yaml --task humaneval
+uv run llm-eval run --config configs/model.yaml --task humaneval
 ```
 
 When a run starts, the framework prints:
@@ -162,8 +169,20 @@ Artifacts:
 - `mbpp`
 - `gsm`
 
-## Tests
+## Development
+
+All tooling is configured in `pyproject.toml` and runs through `uv`:
 
 ```bash
-uv run pytest -q
+# lint
+uv run ruff check .
+
+# auto-format
+uv run ruff format .
+
+# type check
+uv run mypy
+
+# tests
+uv run pytest
 ```

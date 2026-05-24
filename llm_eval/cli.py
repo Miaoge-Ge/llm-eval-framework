@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
-from .runner import EvaluationRunner
+from .runner import EvaluationRunner, RunSummary
 from .settings import load_framework_config
 from .tasks import DEFAULT_TASK_NAME
 
@@ -25,7 +26,6 @@ def main(argv: list[str] | None = None) -> int:
         argv = ["run", *argv]
     parser = build_parser()
     args = parser.parse_args(argv)
-    command = args.command or "run"
 
     config = load_framework_config(
         model_config_path=args.config,
@@ -36,7 +36,7 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _render_summary(summary, output_dir) -> str:
+def _render_summary(summary: RunSummary, output_dir: Path) -> str:
     lines = [
         "=" * 60,
         "LLM Evaluation Summary",

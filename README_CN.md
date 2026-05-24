@@ -7,12 +7,14 @@
 ## 特点
 
 - 默认使用 `uv` 管理依赖与运行环境
+- 可安装的 Python 包（`hatchling` 构建后端），并提供 `llm-eval` 命令行入口
 - 单一模型配置文件
 - 内置 `humaneval`、`humanevalplus`、`mbpp`、`gsm`
 - OpenAI-compatible 调用方式
 - 每次运行都会产出结构化 JSON / JSONL
 - 支持 `thinking` 与 `reasoning_effort`
 - 启动即打印关键信息，评测过程中持续输出进度
+- 内置质量工具链：`ruff`（检查 + 格式化）、`mypy`（类型检查）、`pytest`
 
 ## 目录结构
 
@@ -29,6 +31,7 @@ configs/
   model.yaml
 datasets/
 tests/
+pyproject.toml
 ```
 
 ## 安装
@@ -39,7 +42,7 @@ tests/
 uv sync
 ```
 
-安装开发依赖：
+安装开发依赖（`pytest`、`ruff`、`mypy` 及类型存根）：
 
 ```bash
 uv sync --extra dev
@@ -48,6 +51,8 @@ uv sync --extra dev
 通过 `uv` 管理的环境执行命令：
 
 ```bash
+uv run llm-eval run --config configs/model.yaml --task mbpp
+# 等价的模块形式
 uv run python -m llm_eval run --config configs/model.yaml --task mbpp
 ```
 
@@ -63,6 +68,8 @@ workers: 10
 thinking_enabled: false
 reasoning_effort:
 ```
+
+建议使用 `${ENV_VAR}` 占位符注入密钥，避免把 API Key 明文写入文件。
 
 YAML 中保留的运行配置：
 
@@ -107,7 +114,7 @@ response = client.chat.completions.create(
 在框架里开启方式：
 
 ```bash
-uv run python -m llm_eval run --config configs/model.yaml --task humaneval
+uv run llm-eval run --config configs/model.yaml --task humaneval
 ```
 
 ## CLI 用法
@@ -115,19 +122,19 @@ uv run python -m llm_eval run --config configs/model.yaml --task humaneval
 运行指定任务：
 
 ```bash
-uv run python -m llm_eval run --config configs/model.yaml --task gsm
+uv run llm-eval run --config configs/model.yaml --task gsm
 ```
 
 指定模型配置文件：
 
 ```bash
-uv run python -m llm_eval run --config configs/model.yaml --task mbpp
+uv run llm-eval run --config configs/model.yaml --task mbpp
 ```
 
 最终命令格式保持最小化：
 
 ```bash
-uv run python -m llm_eval run --config configs/model.yaml --task humaneval
+uv run llm-eval run --config configs/model.yaml --task humaneval
 ```
 
 命令启动后会立即打印：
@@ -162,8 +169,20 @@ results/<model_name>/
 - `mbpp`
 - `gsm`
 
-## 测试
+## 开发
+
+所有工具均在 `pyproject.toml` 中配置，并通过 `uv` 运行：
 
 ```bash
-uv run pytest -q
+# 代码检查
+uv run ruff check .
+
+# 自动格式化
+uv run ruff format .
+
+# 类型检查
+uv run mypy
+
+# 运行测试
+uv run pytest
 ```

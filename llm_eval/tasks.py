@@ -4,14 +4,13 @@ import math
 import re
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
-from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from .clients import GenerationResult, OpenAICompatibleClient
 from .settings import FrameworkConfig
 from .utils import dedent_code, execute_python, extract_python_code, indent_block, last_numeric_token, load_jsonl
-
 
 DEFAULT_TASK_NAME = "humaneval"
 
@@ -70,7 +69,14 @@ class BaseEvaluationTask(ABC):
             error=generation.error,
         )
 
-    def _usage_result(self, case: TaskCase, started_at: float, generation: GenerationResult, status: str, **kwargs: Any) -> TaskResult:
+    def _usage_result(
+        self,
+        case: TaskCase,
+        started_at: float,
+        generation: GenerationResult,
+        status: str,
+        **kwargs: Any,
+    ) -> TaskResult:
         return TaskResult(
             case_id=case.case_id,
             status=status,
@@ -146,11 +152,7 @@ class HumanEvalTask(CodeGenerationTask):
 
     def user_prompt(self, case: TaskCase) -> str:
         prompt = case.payload["prompt"].rstrip()
-        return (
-            "Complete the Python function below. "
-            "Keep the original signature and docstring.\n\n"
-            f"{prompt}"
-        )
+        return f"Complete the Python function below. Keep the original signature and docstring.\n\n{prompt}"
 
     def normalize_candidate(self, case: TaskCase, raw_text: str) -> str:
         code = super().normalize_candidate(case, raw_text)
@@ -252,10 +254,7 @@ class GSM8KTask(BaseEvaluationTask):
         messages = [
             {
                 "role": "system",
-                "content": (
-                    "Solve grade-school math carefully. "
-                    "End with a single line in the format `#### <answer>`."
-                ),
+                "content": ("Solve grade-school math carefully. End with a single line in the format `#### <answer>`."),
             },
             {"role": "user", "content": case.payload["question"]},
         ]

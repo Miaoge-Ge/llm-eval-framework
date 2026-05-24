@@ -49,7 +49,7 @@ class EvaluationRunner:
         if not cases:
             raise ValueError(f"No cases found in dataset: {self.config.dataset.path}")
 
-        totals = Counter()
+        totals: Counter[str] = Counter()
         total_duration = 0.0
         total_tokens = 0
         prompt_tokens = 0
@@ -68,7 +68,7 @@ class EvaluationRunner:
                     f"  Dataset: {self.config.dataset.path}",
                     f"  Workers: {self.config.run.workers}",
                     f"  Thinking: {self.config.run.thinking_enabled}",
-                    f"  Reasoning effort: {self.config.run.reasoning_effort if self.config.run.thinking_enabled else 'disabled'}",
+                    f"  Reasoning effort: {self.config.run.reasoning_display}",
                     f"  Output: {self.config.run.output_dir}",
                     f"  Total cases: {len(cases)}",
                 ]
@@ -172,7 +172,7 @@ class EvaluationRunner:
             f"- Dataset: `{self.config.dataset.path}`",
             f"- Workers: `{self.config.run.workers}`",
             f"- Thinking enabled: `{self.config.run.thinking_enabled}`",
-            f"- Reasoning effort: `{self.config.run.reasoning_effort if self.config.run.thinking_enabled else 'disabled'}`",
+            f"- Reasoning effort: `{self.config.run.reasoning_display}`",
             f"- Output directory: `{output_dir}`",
             "",
             "## Metrics",

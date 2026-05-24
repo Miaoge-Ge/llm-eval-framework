@@ -8,7 +8,6 @@ import yaml
 
 from .utils import parse_bool, repo_root, resolve_env_placeholders
 
-
 DEFAULT_DATASET_PATHS = {
     "humaneval": Path("datasets/HumanEval.jsonl"),
     "humanevalplus": Path("datasets/HumanEvalPlus.jsonl"),
@@ -39,6 +38,10 @@ class RunConfig:
     execution_timeout_seconds: int = 20
     thinking_enabled: bool = False
     reasoning_effort: str | None = None
+
+    @property
+    def reasoning_display(self) -> str:
+        return self.reasoning_effort or "default" if self.thinking_enabled else "disabled"
 
 
 @dataclass(frozen=True)
@@ -112,6 +115,8 @@ def _resolve_dataset_path(task_name: str) -> Path:
         available = ", ".join(sorted(DEFAULT_DATASET_PATHS))
         raise ValueError(f"Unsupported task '{task_name}'. Available tasks: {available}")
     return (repo_root() / relative_path).resolve()
+
+
 def _require_text(value: Any, field_name: str) -> str:
     text = str(value).strip() if value is not None else ""
     if not text:
@@ -119,6 +124,8 @@ def _require_text(value: Any, field_name: str) -> str:
     if text.startswith("${") and text.endswith("}"):
         raise ValueError(f"Unresolved environment variable for configuration field: {field_name}")
     return text
+
+
 def _optional_text(value: Any) -> str | None:
     if value is None:
         return None

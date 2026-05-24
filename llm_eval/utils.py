@@ -9,7 +9,6 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-
 BOOL_TRUE = {"1", "true", "yes", "y", "on", "enable", "enabled"}
 BOOL_FALSE = {"0", "false", "no", "n", "off", "disable", "disabled"}
 ENV_PATTERN = re.compile(r"\$\{([^}:]+)(?::-([^}]*))?\}")
