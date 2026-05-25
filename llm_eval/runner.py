@@ -13,7 +13,7 @@ from .clients import OpenAICompatibleClient
 from .reporting import ResultWriter
 from .settings import FrameworkConfig
 from .tasks import TASK_REGISTRY, BaseEvaluationTask, TaskCase, TaskResult
-from .utils import format_seconds
+from .utils import format_seconds, natural_sort_key
 
 
 @dataclass(frozen=True)
@@ -186,6 +186,21 @@ class EvaluationRunner:
         for status, count in sorted(summary.status_counts.items()):
             lines.append(f"| {status} | {count} |")
 
+        domain_rows = _domain_breakdown(results)
+        if domain_rows:
+            lines.extend(
+                [
+                    "",
+                    "### Accuracy by domain",
+                    "",
+                    "| Domain | Passed | Total | Pass rate |",
+                    "| --- | --- | --- | --- |",
+                ]
+            )
+            for domain, passed, total in domain_rows:
+                rate = passed / total if total else 0.0
+                lines.append(f"| {domain} | {passed} | {total} | {rate:.2%} |")
+
         lines.extend(
             [
                 "",
@@ -195,7 +210,8 @@ class EvaluationRunner:
                 "| --- | --- | --- | --- | --- | --- |",
             ]
         )
-        for index, item in enumerate(sorted(results, key=lambda r: r.get("case_id", "")), start=1):
+        ordered = sorted(results, key=lambda r: natural_sort_key(str(r.get("case_id", ""))))
+        for index, item in enumerate(ordered, start=1):
             lines.append(
                 "| {idx} | {case} | {status} | {time} | {tokens} | {detail} |".format(
                     idx=index,
@@ -208,6 +224,19 @@ class EvaluationRunner:
             )
 
         return "\n".join(lines).strip() + "\n"
+
+
+def _domain_breakdown(results: list[dict[str, Any]]) -> list[tuple[str, int, int]]:
+    stats: dict[str, list[int]] = {}
+    for item in results:
+        domain = (item.get("metadata") or {}).get("domain")
+        if not domain:
+            continue
+        entry = stats.setdefault(domain, [0, 0])
+        entry[1] += 1
+        if item.get("status") == "PASSED":
+            entry[0] += 1
+    return [(domain, passed, total) for domain, (passed, total) in sorted(stats.items())]
 
 
 def _shorten(value: str, limit: int = 160) -> str:
@@ -231,5 +260,5 @@ def _detail(item: dict[str, Any]) -> str:
     expected = item.get("expected")
     actual = item.get("actual")
     if expected is not None or actual is not None:
-        return f"expected {expected} | got {actual}"
+        return f"expected {expected} -> got {actual}"
     return "n/a"

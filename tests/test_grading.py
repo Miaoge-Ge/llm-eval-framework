@@ -1,6 +1,12 @@
 from llm_eval.clients import GenerationResult
+from llm_eval.runner import _domain_breakdown
 from llm_eval.tasks import GPQATask, Math500Task, TaskCase
-from llm_eval.utils import extract_choice_letter, extract_last_boxed, normalize_math_answer
+from llm_eval.utils import (
+    extract_choice_letter,
+    extract_last_boxed,
+    natural_sort_key,
+    normalize_math_answer,
+)
 
 
 class FakeClient:
@@ -39,6 +45,26 @@ def test_extract_choice_letter_variants():
     assert extract_choice_letter("I think the answer is (B).") == "B"
     assert extract_choice_letter("Answer: C") == "C"
     assert extract_choice_letter("no clear choice") is None
+
+
+def test_natural_sort_orders_numeric_suffixes():
+    ids = ["HumanEval/10", "HumanEval/2", "HumanEval/1", "HumanEval/20"]
+    assert sorted(ids, key=natural_sort_key) == [
+        "HumanEval/1",
+        "HumanEval/2",
+        "HumanEval/10",
+        "HumanEval/20",
+    ]
+
+
+def test_domain_breakdown_aggregates_by_metadata():
+    results = [
+        {"status": "PASSED", "metadata": {"domain": "Physics"}},
+        {"status": "FAILED", "metadata": {"domain": "Physics"}},
+        {"status": "PASSED", "metadata": {"domain": "Biology"}},
+        {"status": "PASSED", "metadata": {}},
+    ]
+    assert _domain_breakdown(results) == [("Biology", 1, 1), ("Physics", 1, 2)]
 
 
 def test_math500_grades_boxed_answer(fake_config):

@@ -92,6 +92,9 @@ uv run llm-eval run --config configs/model.yaml --task mbpp
 
 # 等价的模块形式
 uv run python -m llm_eval run --config configs/model.yaml --task gsm
+
+# 列出所有可用任务
+uv run llm-eval run --list-tasks
 ```
 
 `--config` 默认 `configs/model.yaml`，`--task` 默认 `humaneval`。

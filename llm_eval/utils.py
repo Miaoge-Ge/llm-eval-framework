@@ -114,6 +114,10 @@ def last_numeric_token(text: str) -> str | None:
     return matches[-1].replace(",", "")
 
 
+def natural_sort_key(value: str) -> list[Any]:
+    return [int(part) if part.isdigit() else part for part in re.split(r"(\d+)", value)]
+
+
 def extract_last_boxed(text: str) -> str | None:
     if not text:
         return None

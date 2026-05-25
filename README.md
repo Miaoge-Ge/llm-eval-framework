@@ -92,6 +92,9 @@ uv run llm-eval run --config configs/model.yaml --task mbpp
 
 # equivalent module form
 uv run python -m llm_eval run --config configs/model.yaml --task gsm
+
+# list available tasks
+uv run llm-eval run --list-tasks
 ```
 
 `--config` defaults to `configs/model.yaml` and `--task` defaults to `humaneval`.

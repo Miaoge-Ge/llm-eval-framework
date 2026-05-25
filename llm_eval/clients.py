@@ -51,6 +51,9 @@ class OpenAICompatibleClient:
                 if content:
                     return GenerationResult(content=content, usage=usage, http_status_code=raw_response.status_code)
                 last_error = "Model returned an empty completion"
+                last_status_code = raw_response.status_code
+                if attempt < MAX_ATTEMPTS - 1:
+                    time.sleep(1 + attempt)
             except Exception as exc:
                 last_error = str(exc).replace("\n", " ")
                 last_status_code = getattr(exc, "status_code", None)

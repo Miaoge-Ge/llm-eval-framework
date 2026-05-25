@@ -315,8 +315,9 @@ class Math500Task(BaseEvaluationTask):
         if generation.error:
             return self._api_error_result(case, started_at, generation)
 
+        boxed = extract_last_boxed(generation.content)
         expected = normalize_math_answer(case.payload["answer"])
-        actual = normalize_math_answer(extract_last_boxed(generation.content))
+        actual = normalize_math_answer(boxed)
         is_correct = expected is not None and actual is not None and expected == actual
         return self._usage_result(
             case,
@@ -324,7 +325,7 @@ class Math500Task(BaseEvaluationTask):
             generation,
             status="PASSED" if is_correct else "FAILED",
             expected=case.payload["answer"],
-            actual=extract_last_boxed(generation.content),
+            actual=boxed,
         )
 
 

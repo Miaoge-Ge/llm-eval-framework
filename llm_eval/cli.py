@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .runner import EvaluationRunner, RunSummary
 from .settings import load_framework_config
-from .tasks import DEFAULT_TASK_NAME
+from .tasks import DEFAULT_TASK_NAME, TASK_REGISTRY
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -16,6 +16,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser = subparsers.add_parser("run", help="Run an evaluation")
     run_parser.add_argument("--config", default="configs/model.yaml", help="Path to model config YAML")
     run_parser.add_argument("--task", default=DEFAULT_TASK_NAME, help="Task name")
+    run_parser.add_argument("--list-tasks", action="store_true", help="List available tasks and exit")
 
     return parser
 
@@ -27,10 +28,21 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    config = load_framework_config(
-        model_config_path=args.config,
-        task=args.task,
-    )
+    if getattr(args, "list_tasks", False):
+        print("Available tasks:")
+        for name in sorted(TASK_REGISTRY):
+            print(f"  - {name}")
+        return 0
+
+    try:
+        config = load_framework_config(
+            model_config_path=args.config,
+            task=args.task,
+        )
+    except (ValueError, FileNotFoundError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
     summary, writer = EvaluationRunner(config).run()
     print(_render_summary(summary, writer.paths.report_md))
     return 0
