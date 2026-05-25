@@ -9,12 +9,16 @@ import yaml
 from .utils import parse_bool, repo_root, resolve_env_placeholders
 
 DEFAULT_DATASET_PATHS = {
-    "humaneval": Path("datasets/HumanEval.jsonl"),
-    "humanevalplus": Path("datasets/HumanEvalPlus.jsonl"),
+    "humaneval": Path("datasets/humaneval.jsonl"),
+    "humanevalplus": Path("datasets/humanevalplus.jsonl"),
     "mbpp": Path("datasets/mbpp.jsonl"),
     "gsm": Path("datasets/gsm.jsonl"),
     "math500": Path("datasets/math500.jsonl"),
     "gpqa": Path("datasets/gpqa.jsonl"),
+    "mmlu": Path("datasets/mmlu.jsonl"),
+    "arc_challenge": Path("datasets/arc_challenge.jsonl"),
+    "hellaswag": Path("datasets/hellaswag.jsonl"),
+    "ceval": Path("datasets/ceval.jsonl"),
 }
 
 

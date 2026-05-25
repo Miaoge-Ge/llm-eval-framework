@@ -2,18 +2,19 @@
 
 [中文文档](README_CN.md)
 
-A clean, engineering-first evaluation framework for code and reasoning benchmarks. It uses `uv`-managed environments, a single minimal model config, and produces one self-contained Markdown report per run against any OpenAI-compatible endpoint.
+A clean, engineering-first evaluation framework for LLM benchmarks. It uses `uv`-managed environments, a single minimal model config, and produces one self-contained Markdown report per run against any OpenAI-compatible endpoint.
 
 ## Highlights
 
 - `uv` as the default environment and dependency workflow
 - Installable package (`hatchling` build backend) with a `llm-eval` console script
 - Single model config file, with `${ENV_VAR}` placeholders for secrets
-- Built-in tasks: `humaneval`, `humanevalplus`, `mbpp`, `gsm`, `math500`, `gpqa`
+- 10 built-in tasks across code generation, math reasoning, and multiple-choice knowledge
 - OpenAI-compatible client with streaming, retries, and usage accounting
 - One self-contained Markdown report per run (config + metrics + per-case results)
-- Optional thinking mode with `reasoning_effort`
-- Immediate startup logs and a live progress bar during evaluation
+- Per-subject / per-domain accuracy breakdown for all knowledge tasks
+- Optional thinking mode with configurable `reasoning_effort`
+- Live progress bar with pass/fail counts during evaluation
 - Quality tooling wired in: `ruff` (lint + format), `mypy` (type checking), `pytest`
 
 ## Project structure
@@ -30,6 +31,16 @@ llm_eval/
 configs/
   model.example.yaml   # committed template (no secrets)
 datasets/
+  humaneval.jsonl
+  humanevalplus.jsonl
+  mbpp.jsonl
+  gsm.jsonl
+  math500.jsonl
+  gpqa.jsonl
+  mmlu.jsonl
+  arc_challenge.jsonl
+  hellaswag.jsonl
+  ceval.jsonl
 tests/
 pyproject.toml
 ```
@@ -88,13 +99,13 @@ The output directory is fixed to `results/<model_name>/`.
 
 ```bash
 # run a benchmark
-uv run llm-eval run --config configs/model.yaml --task mbpp
+uv run llm-eval run --config configs/model.yaml --task mmlu
 
 # equivalent module form
 uv run python -m llm_eval run --config configs/model.yaml --task gsm
 
-# list available tasks
-uv run llm-eval run --list-tasks
+# list all available tasks
+uv run llm-eval --list-tasks
 ```
 
 `--config` defaults to `configs/model.yaml` and `--task` defaults to `humaneval`.
@@ -123,14 +134,32 @@ response = client.chat.completions.create(
 
 ## Supported tasks
 
+### Code generation
+
 | Task | Dataset | Cases | Grading |
 | --- | --- | --- | --- |
 | `humaneval` | HumanEval | 164 | Execute generated code against unit tests |
 | `humanevalplus` | HumanEval+ | 164 | Same, with extended tests and a numpy shim |
 | `mbpp` | MBPP | 974 | Execute generated code against assertion tests |
-| `gsm` | GSM8K | 1319 | Exact match on the final numeric answer |
+
+### Math reasoning
+
+| Task | Dataset | Cases | Grading |
+| --- | --- | --- | --- |
+| `gsm` | GSM8K | 1319 | Exact match on the final `#### <number>` answer |
 | `math500` | MATH-500 | 500 | Normalize and match the `\boxed{}` answer |
-| `gpqa` | GPQA-Diamond | 198 | Multiple-choice letter from `\boxed{}` |
+
+### Multiple-choice knowledge
+
+All MCQ tasks ask the model to output `\boxed{A/B/C/D}` and grade by exact letter match. The report includes a per-subject or per-domain accuracy breakdown.
+
+| Task | Dataset | Cases | Coverage |
+| --- | --- | --- | --- |
+| `gpqa` | GPQA-Diamond | 198 | PhD-level science (Physics, Chemistry, Biology) |
+| `mmlu` | MMLU | 40 | General knowledge across 10 subjects |
+| `arc_challenge` | ARC-Challenge | 35 | Grade-school to high-school science reasoning |
+| `hellaswag` | HellaSwag | 20 | Commonsense activity completion |
+| `ceval` | C-Eval | 40 | Chinese multi-subject knowledge (Chinese language) |
 
 ## Output
 
@@ -145,6 +174,7 @@ It contains:
 - **Overview** — task, model, dataset, workers, thinking mode
 - **Metrics** — pass rate, wall clock, throughput, prompt/completion/total tokens
 - **Status counts** — how many cases passed, failed, errored, etc.
+- **Accuracy by domain** — per-subject breakdown (knowledge tasks only)
 - **Results** — a per-case table with status, time, tokens, and a detail column
 
 ## Development

@@ -9,11 +9,12 @@
 - 默认使用 `uv` 管理依赖与运行环境
 - 可安装的 Python 包（`hatchling` 构建后端），提供 `llm-eval` 命令行入口
 - 单一模型配置文件，密钥用 `${ENV_VAR}` 占位符注入
-- 内置任务：`humaneval`、`humanevalplus`、`mbpp`、`gsm`、`math500`、`gpqa`
-- OpenAI-compatible 客户端，支持流式、重试与 token 用量统计
+- 内置 10 个评测任务，涵盖代码生成、数学推理、多选知识题三大类
+- OpenAI-compatible 客户端，支持流式输出、自动重试与 token 用量统计
 - 每次运行只产出一个自包含 Markdown 报告（配置 + 指标 + 逐条结果）
-- 支持 `thinking` 与 `reasoning_effort`
-- 启动即打印关键信息，评测过程中显示实时进度条
+- 知识题任务自动生成分学科 / 分领域准确率明细
+- 支持 `thinking` 与可配置的 `reasoning_effort`
+- 评测过程中显示实时进度条（通过数 / 失败数 / 最近 HTTP 状态）
 - 内置质量工具链：`ruff`（检查 + 格式化）、`mypy`（类型检查）、`pytest`
 
 ## 目录结构
@@ -30,6 +31,16 @@ llm_eval/
 configs/
   model.example.yaml   # 已提交的模板（不含密钥）
 datasets/
+  humaneval.jsonl
+  humanevalplus.jsonl
+  mbpp.jsonl
+  gsm.jsonl
+  math500.jsonl
+  gpqa.jsonl
+  mmlu.jsonl
+  arc_challenge.jsonl
+  hellaswag.jsonl
+  ceval.jsonl
 tests/
 pyproject.toml
 ```
@@ -50,7 +61,7 @@ uv sync --extra dev
 
 ## 模型配置
 
-把已提交的模板复制为本地配置（`configs/` 目录除示例外都被 git 忽略，因此你的真实密钥不会被提交）：
+把已提交的模板复制为本地配置（`configs/` 目录除示例外都被 git 忽略，因此真实密钥不会被提交）：
 
 ```bash
 cp configs/model.example.yaml configs/model.yaml
@@ -87,14 +98,14 @@ reasoning_effort:
 ## CLI 用法
 
 ```bash
-# 运行某个任务
-uv run llm-eval run --config configs/model.yaml --task mbpp
+# 运行某个评测任务
+uv run llm-eval run --config configs/model.yaml --task mmlu
 
 # 等价的模块形式
 uv run python -m llm_eval run --config configs/model.yaml --task gsm
 
 # 列出所有可用任务
-uv run llm-eval run --list-tasks
+uv run llm-eval --list-tasks
 ```
 
 `--config` 默认 `configs/model.yaml`，`--task` 默认 `humaneval`。
@@ -123,14 +134,32 @@ response = client.chat.completions.create(
 
 ## 当前支持任务
 
+### 代码生成
+
 | 任务 | 数据集 | 题数 | 打分方式 |
 | --- | --- | --- | --- |
 | `humaneval` | HumanEval | 164 | 执行生成代码并跑单元测试 |
 | `humanevalplus` | HumanEval+ | 164 | 同上，含扩展测试与 numpy 兼容垫片 |
 | `mbpp` | MBPP | 974 | 执行生成代码并跑断言测试 |
-| `gsm` | GSM8K | 1319 | 最终数值答案精确匹配 |
+
+### 数学推理
+
+| 任务 | 数据集 | 题数 | 打分方式 |
+| --- | --- | --- | --- |
+| `gsm` | GSM8K | 1319 | 精确匹配 `#### <数字>` 末尾答案 |
 | `math500` | MATH-500 | 500 | 归一化后匹配 `\boxed{}` 内的答案 |
-| `gpqa` | GPQA-Diamond | 198 | 从 `\boxed{}` 提取多选字母 |
+
+### 多选知识题
+
+所有多选任务要求模型输出 `\boxed{A/B/C/D}`，按字母精确匹配打分。报告中会自动生成分学科 / 分领域准确率明细。
+
+| 任务 | 数据集 | 题数 | 覆盖范围 |
+| --- | --- | --- | --- |
+| `gpqa` | GPQA-Diamond | 198 | 博士级科学题（物理、化学、生物） |
+| `mmlu` | MMLU | 40 | 通用知识，覆盖 10 个学科 |
+| `arc_challenge` | ARC-Challenge | 35 | 初中至高中理科推理 |
+| `hellaswag` | HellaSwag | 20 | 常识活动场景续写 |
+| `ceval` | C-Eval | 40 | 中文多学科知识（中文题目） |
 
 ## 输出产物
 
@@ -145,6 +174,7 @@ results/<model_name>/<task>_report.md
 - **Overview** — 任务、模型、数据集、并发数、思考模式
 - **Metrics** — 通过率、总用时、吞吐、prompt/completion/total tokens
 - **Status counts** — 各状态（通过 / 失败 / 报错等）计数
+- **Accuracy by domain** — 分学科准确率明细（仅知识题任务）
 - **Results** — 逐条结果表：状态、用时、tokens、详情列
 
 ## 开发
