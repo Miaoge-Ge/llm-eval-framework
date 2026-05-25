@@ -1,0 +1,21 @@
+# Copy this file to a real config (e.g. configs/my-model.yaml) and fill in values.
+# Secrets are read from environment variables via ${ENV_VAR} placeholders,
+# so the API key is never written to disk.
+base_url: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+api_key: ${OPENAI_API_KEY}
+model_name: gpt-4.1-mini
+
+# Concurrency for the evaluation run.
+workers: 10
+
+# Per-request HTTP timeout in seconds.
+timeout_seconds: 120
+
+# Caps how long a generated code sample may run during execution-based grading.
+execution_timeout_seconds: 20
+
+# Set to true to request reasoning/thinking from providers that support it.
+thinking_enabled: false
+
+# Optional: low | medium | high | max (only sent when thinking_enabled is true).
+reasoning_effort:

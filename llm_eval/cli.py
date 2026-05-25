@@ -32,11 +32,11 @@ def main(argv: list[str] | None = None) -> int:
         task=args.task,
     )
     summary, writer = EvaluationRunner(config).run()
-    print(_render_summary(summary, writer.paths.root))
+    print(_render_summary(summary, writer.paths.report_md))
     return 0
 
 
-def _render_summary(summary: RunSummary, output_dir: Path) -> str:
+def _render_summary(summary: RunSummary, report_path: Path) -> str:
     lines = [
         "=" * 60,
         "LLM Evaluation Summary",
@@ -50,7 +50,7 @@ def _render_summary(summary: RunSummary, output_dir: Path) -> str:
         f"Throughput: {summary.throughput_tokens_per_second:.1f} tokens/s",
         f"Statuses: {summary.status_counts}",
         f"Tokens: {summary.token_usage}",
-        f"Artifacts: {output_dir}",
+        f"Report: {report_path}",
         "=" * 60,
     ]
     return "\n".join(lines)

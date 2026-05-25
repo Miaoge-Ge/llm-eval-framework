@@ -27,4 +27,6 @@ __pycache__/
 Thumbs.db
 
 results/
-configs/
+configs/*
+# ...but keep the committed, secret-free example config
+!configs/model.example.yaml
