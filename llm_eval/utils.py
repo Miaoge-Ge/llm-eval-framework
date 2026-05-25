@@ -114,6 +114,75 @@ def last_numeric_token(text: str) -> str | None:
     return matches[-1].replace(",", "")
 
 
+def extract_last_boxed(text: str) -> str | None:
+    if not text:
+        return None
+    needle = "\\boxed"
+    start = text.rfind(needle)
+    if start == -1:
+        return None
+    index = start + len(needle)
+    while index < len(text) and text[index] != "{":
+        if text[index] == " ":
+            index += 1
+            continue
+        return None
+    if index >= len(text):
+        return None
+    depth = 0
+    content_start = index + 1
+    for position in range(index, len(text)):
+        char = text[position]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[content_start:position]
+    return None
+
+
+def normalize_math_answer(text: str | None) -> str | None:
+    if text is None:
+        return None
+    value = text.strip()
+    if not value:
+        return None
+    for wrapper in ("\\left", "\\right", "\\,", "\\!", "\\ ", "\\;", "\\:", "$", "\\$"):
+        value = value.replace(wrapper, "")
+    value = re.sub(r"\\text\s*\{([^}]*)\}", r"\1", value)
+    value = re.sub(r"\\mbox\s*\{([^}]*)\}", r"\1", value)
+    value = value.replace("\\dfrac", "\\frac").replace("\\tfrac", "\\frac")
+    value = value.replace("\\%", "").replace("%", "")
+    value = value.replace("^{\\circ}", "").replace("^\\circ", "").replace("{}^\\circ", "")
+    value = value.replace(" ", "")
+    if value.endswith("."):
+        value = value[:-1]
+    value = value.replace("dollars", "").replace("\\cdot", "*")
+    return value or None
+
+
+def extract_choice_letter(text: str) -> str | None:
+    if not text:
+        return None
+    boxed = extract_last_boxed(text)
+    if boxed:
+        match = re.search(r"[A-D]", boxed.upper())
+        if match:
+            return match.group(0)
+    patterns = [
+        r"answer\s*(?:is|:)?\s*\(?([A-D])\)?",
+        r"\b([A-D])\b\s*$",
+        r"\(([A-D])\)",
+    ]
+    upper = text.strip()
+    for pattern in patterns:
+        match = re.search(pattern, upper, re.IGNORECASE | re.MULTILINE)
+        if match:
+            return match.group(1).upper()
+    return None
+
+
 def execute_python(code: str, timeout_seconds: int) -> tuple[str, str]:
     temp_path: Path | None = None
     try:

@@ -13,6 +13,8 @@ DEFAULT_DATASET_PATHS = {
     "humanevalplus": Path("datasets/HumanEvalPlus.jsonl"),
     "mbpp": Path("datasets/mbpp.jsonl"),
     "gsm": Path("datasets/gsm.jsonl"),
+    "math500": Path("datasets/math500.jsonl"),
+    "gpqa": Path("datasets/gpqa.jsonl"),
 }
 
 

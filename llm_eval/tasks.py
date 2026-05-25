@@ -10,7 +10,17 @@ from typing import Any
 
 from .clients import GenerationResult, OpenAICompatibleClient
 from .settings import FrameworkConfig
-from .utils import dedent_code, execute_python, extract_python_code, indent_block, last_numeric_token, load_jsonl
+from .utils import (
+    dedent_code,
+    execute_python,
+    extract_choice_letter,
+    extract_last_boxed,
+    extract_python_code,
+    indent_block,
+    last_numeric_token,
+    load_jsonl,
+    normalize_math_answer,
+)
 
 DEFAULT_TASK_NAME = "humaneval"
 
@@ -283,9 +293,82 @@ class GSM8KTask(BaseEvaluationTask):
             return actual.strip() == expected.strip()
 
 
+class Math500Task(BaseEvaluationTask):
+    task_name = "math500"
+
+    def case_id_for(self, row: dict[str, Any]) -> str:
+        return str(row.get("unique_id", row.get("_row_index", "unknown")))
+
+    def evaluate_case(self, case: TaskCase, client: OpenAICompatibleClient) -> TaskResult:
+        started_at = time.time()
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "Solve the competition math problem step by step. "
+                    "Put the final answer inside \\boxed{} on the last line."
+                ),
+            },
+            {"role": "user", "content": case.payload["problem"]},
+        ]
+        generation = client.generate(messages)
+        if generation.error:
+            return self._api_error_result(case, started_at, generation)
+
+        expected = normalize_math_answer(case.payload["answer"])
+        actual = normalize_math_answer(extract_last_boxed(generation.content))
+        is_correct = expected is not None and actual is not None and expected == actual
+        return self._usage_result(
+            case,
+            started_at,
+            generation,
+            status="PASSED" if is_correct else "FAILED",
+            expected=case.payload["answer"],
+            actual=extract_last_boxed(generation.content),
+        )
+
+
+class GPQATask(BaseEvaluationTask):
+    task_name = "gpqa"
+
+    def case_id_for(self, row: dict[str, Any]) -> str:
+        return str(row.get("id", row.get("_row_index", "unknown")))
+
+    def evaluate_case(self, case: TaskCase, client: OpenAICompatibleClient) -> TaskResult:
+        started_at = time.time()
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "Answer the multiple-choice question. Reason briefly, "
+                    "then give the final answer as \\boxed{A}, \\boxed{B}, \\boxed{C}, or \\boxed{D}."
+                ),
+            },
+            {"role": "user", "content": case.payload["problem"]},
+        ]
+        generation = client.generate(messages)
+        if generation.error:
+            return self._api_error_result(case, started_at, generation)
+
+        expected = str(case.payload["answer"]).strip().upper()
+        actual = extract_choice_letter(generation.content)
+        is_correct = actual is not None and actual == expected
+        return self._usage_result(
+            case,
+            started_at,
+            generation,
+            status="PASSED" if is_correct else "FAILED",
+            expected=expected,
+            actual=actual,
+            metadata={"domain": case.payload.get("domain", "")},
+        )
+
+
 TASK_REGISTRY: dict[str, Callable[[FrameworkConfig], BaseEvaluationTask]] = {
     HumanEvalTask.task_name: HumanEvalTask,
     HumanEvalPlusTask.task_name: HumanEvalPlusTask,
     MBPPTask.task_name: MBPPTask,
     GSM8KTask.task_name: GSM8KTask,
+    Math500Task.task_name: Math500Task,
+    GPQATask.task_name: GPQATask,
 }

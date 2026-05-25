@@ -3,7 +3,7 @@ from __future__ import annotations
 import concurrent.futures
 import time
 from collections import Counter
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -56,8 +56,7 @@ class EvaluationRunner:
         completion_tokens = 0
         last_http_status_code: int | None = None
         started_at = time.time()
-        sample_passes: list[dict[str, Any]] = []
-        sample_issues: list[dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
 
         print(
             "\n".join(
@@ -83,18 +82,13 @@ class EvaluationRunner:
                     for future in concurrent.futures.as_completed(future_to_case):
                         result = future.result()
                         payload = result.to_dict()
-                        writer.write_result(payload)
+                        results.append(payload)
                         totals[result.status] += 1
                         total_duration += result.duration_seconds
                         total_tokens += result.total_tokens
                         prompt_tokens += result.prompt_tokens
                         completion_tokens += result.completion_tokens
                         last_http_status_code = result.http_status_code or last_http_status_code
-
-                        if result.status == "PASSED" and len(sample_passes) < 3:
-                            sample_passes.append(payload)
-                        elif result.status != "PASSED" and len(sample_issues) < 5:
-                            sample_issues.append(payload)
 
                         progress.update(1)
                         progress.set_postfix_str(
@@ -126,20 +120,11 @@ class EvaluationRunner:
                     "total_tokens": total_tokens,
                 },
             )
-            payload = asdict(summary)
-            payload["artifacts"] = {
-                "results_jsonl": str(writer.paths.results_jsonl),
-                "summary_json": str(writer.paths.summary_json),
-                "resolved_config_json": str(writer.paths.config_json),
-                "report_md": str(writer.paths.report_md),
-            }
-            writer.write_summary(payload)
             writer.write_report(
                 self._build_markdown_report(
                     summary=summary,
                     output_dir=writer.paths.root,
-                    sample_passes=sample_passes,
-                    sample_issues=sample_issues,
+                    results=results,
                 )
             )
             return summary, writer
@@ -159,66 +144,68 @@ class EvaluationRunner:
         self,
         summary: RunSummary,
         output_dir: Path,
-        sample_passes: list[dict[str, Any]],
-        sample_issues: list[dict[str, Any]],
+        results: list[dict[str, Any]],
     ) -> str:
+        usage = summary.token_usage
+        generated_at = time.strftime("%Y-%m-%d %H:%M:%S")
         lines = [
-            "# Evaluation Report",
+            f"# Evaluation Report - {summary.task}",
+            "",
+            f"_Generated at {generated_at}_",
             "",
             "## Overview",
             "",
-            f"- Task: `{summary.task}`",
-            f"- Model: `{summary.model}`",
-            f"- Dataset: `{self.config.dataset.path}`",
-            f"- Workers: `{self.config.run.workers}`",
-            f"- Thinking enabled: `{self.config.run.thinking_enabled}`",
-            f"- Reasoning effort: `{self.config.run.reasoning_display}`",
-            f"- Output directory: `{output_dir}`",
+            "| Field | Value |",
+            "| --- | --- |",
+            f"| Task | `{summary.task}` |",
+            f"| Model | `{summary.model}` |",
+            f"| Dataset | `{self.config.dataset.path}` |",
+            f"| Workers | `{self.config.run.workers}` |",
+            f"| Thinking enabled | `{self.config.run.thinking_enabled}` |",
+            f"| Reasoning effort | `{self.config.run.reasoning_display}` |",
             "",
             "## Metrics",
             "",
-            f"- Total cases: `{summary.total_cases}`",
-            f"- Completed cases: `{summary.completed_cases}`",
-            f"- Pass rate: `{summary.pass_rate:.2%}`",
-            f"- Wall clock: `{summary.wall_clock_human}`",
-            f"- Average case time: `{summary.average_case_seconds:.2f}s`",
-            f"- Throughput: `{summary.throughput_tokens_per_second:.1f} tokens/s`",
-            f"- Status counts: `{summary.status_counts}`",
-            f"- Token usage: `{summary.token_usage}`",
+            "| Metric | Value |",
+            "| --- | --- |",
+            f"| Pass rate | **{summary.pass_rate:.2%}** |",
+            f"| Total cases | {summary.total_cases} |",
+            f"| Completed cases | {summary.completed_cases} |",
+            f"| Wall clock | {summary.wall_clock_human} |",
+            f"| Average case time | {summary.average_case_seconds:.2f}s |",
+            f"| Throughput | {summary.throughput_tokens_per_second:.1f} tokens/s |",
+            f"| Prompt tokens | {usage.get('prompt_tokens', 0):,} |",
+            f"| Completion tokens | {usage.get('completion_tokens', 0):,} |",
+            f"| Total tokens | {usage.get('total_tokens', 0):,} |",
             "",
-            "## Generated Files",
+            "### Status counts",
             "",
-            f"- `{summary.task}_results.jsonl`",
-            f"- `{summary.task}_summary.json`",
-            f"- `{summary.task}_report.md`",
-            "- `resolved_config.json`",
-            "",
+            "| Status | Count |",
+            "| --- | --- |",
         ]
+        for status, count in sorted(summary.status_counts.items()):
+            lines.append(f"| {status} | {count} |")
 
-        if sample_issues:
-            lines.extend(["## Sample Issues", ""])
-            for item in sample_issues:
-                lines.extend(
-                    [
-                        f"### {item.get('case_id', 'unknown')}",
-                        f"- Status: `{item.get('status', 'unknown')}`",
-                        f"- Duration: `{item.get('duration_human', 'n/a')}`",
-                        f"- Detail: `{_shorten(item.get('error') or item.get('actual') or 'n/a')}`",
-                        "",
-                    ]
+        lines.extend(
+            [
+                "",
+                "## Results",
+                "",
+                "| # | Case | Status | Time | Tokens | Detail |",
+                "| --- | --- | --- | --- | --- | --- |",
+            ]
+        )
+        for index, item in enumerate(sorted(results, key=lambda r: r.get("case_id", "")), start=1):
+            lines.append(
+                "| {idx} | {case} | {status} | {time} | {tokens} | {detail} |".format(
+                    idx=index,
+                    case=_cell(item.get("case_id", "unknown")),
+                    status=item.get("status", "unknown"),
+                    time=item.get("duration_human", "n/a"),
+                    tokens=item.get("total_tokens", 0),
+                    detail=_cell(_detail(item)),
                 )
-
-        if sample_passes:
-            lines.extend(["## Sample Passes", ""])
-            for item in sample_passes:
-                lines.extend(
-                    [
-                        f"### {item.get('case_id', 'unknown')}",
-                        f"- Status: `{item.get('status', 'unknown')}`",
-                        f"- Duration: `{item.get('duration_human', 'n/a')}`",
-                        "",
-                    ]
-                )
+            )
 
         return "\n".join(lines).strip() + "\n"
 
@@ -228,3 +215,21 @@ def _shorten(value: str, limit: int = 160) -> str:
     if len(compact) <= limit:
         return compact
     return compact[: limit - 3] + "..."
+
+
+def _cell(value: Any) -> str:
+    text = _shorten(str(value)).replace("|", "\\|")
+    return text or "n/a"
+
+
+def _detail(item: dict[str, Any]) -> str:
+    if item.get("status") == "PASSED":
+        return "passed"
+    error = item.get("error")
+    if error:
+        return str(error)
+    expected = item.get("expected")
+    actual = item.get("actual")
+    if expected is not None or actual is not None:
+        return f"expected {expected} | got {actual}"
+    return "n/a"
