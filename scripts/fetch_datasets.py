@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import random
 import re
+from collections import defaultdict
 from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
@@ -116,11 +118,50 @@ def build_livecodebench() -> None:
     _write_jsonl("LiveCodeBench.jsonl", rows)
 
 
+def build_aime2026() -> None:
+    dataset = load_dataset("math-ai/aime26", split="test")
+    rows = [
+        {
+            "id": f"AIME2026/{record['id']}",
+            "problem": record["problem"],
+            "answer": str(record["answer"]).strip(),
+        }
+        for record in dataset
+    ]
+    _write_jsonl("AIME2026.jsonl", rows)
+
+
+def build_mmlu_pro(per_category: int = 30) -> None:
+    dataset = load_dataset("TIGER-Lab/MMLU-Pro", split="test")
+    by_category: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for record in dataset:
+        by_category[record["category"]].append(record)
+
+    rng = random.Random(2026)
+    rows: list[dict[str, Any]] = []
+    for category in sorted(by_category):
+        items = by_category[category]
+        picked = items if len(items) <= per_category else rng.sample(items, per_category)
+        for record in sorted(picked, key=lambda item: item["question_id"]):
+            rows.append(
+                {
+                    "id": f"mmlu_pro/{record['question_id']}",
+                    "question": record["question"],
+                    "options": list(record["options"]),
+                    "answer": str(record["answer"]).strip().upper(),
+                    "category": record["category"],
+                }
+            )
+    _write_jsonl("MMLUPro.jsonl", rows)
+
+
 BUILDERS: dict[str, Callable[[], None]] = {
     "aime": build_aime2025,
+    "aime2026": build_aime2026,
     "mbppplus": build_mbppplus,
     "ifeval": build_ifeval,
     "livecodebench": build_livecodebench,
+    "mmlu_pro": build_mmlu_pro,
 }
 
 

@@ -38,7 +38,9 @@ datasets/
   MBPPPlus.jsonl
   GSM8K.jsonl
   AIME2025.jsonl
+  AIME2026.jsonl
   GPQA.jsonl
+  MMLUPro.jsonl
   IFEval.jsonl
   LiveCodeBench.jsonl
 scripts/
@@ -107,10 +109,33 @@ uv run llm-eval run --config configs/model.yaml --task gpqa
 uv run python -m llm_eval run --config configs/model.yaml --task gsm
 
 # list all available tasks
-uv run llm-eval --list-tasks
+uv run llm-eval run --list-tasks
 ```
 
 `--config` defaults to `configs/model.yaml` and `--task` defaults to `humaneval`.
+
+### Run every benchmark
+
+```bash
+# Code generation
+uv run llm-eval run --config configs/model.yaml --task humaneval
+uv run llm-eval run --config configs/model.yaml --task humanevalplus
+uv run llm-eval run --config configs/model.yaml --task mbpp
+uv run llm-eval run --config configs/model.yaml --task mbppplus
+uv run llm-eval run --config configs/model.yaml --task livecodebench
+
+# Math reasoning
+uv run llm-eval run --config configs/model.yaml --task gsm
+uv run llm-eval run --config configs/model.yaml --task aime2025
+uv run llm-eval run --config configs/model.yaml --task aime2026
+
+# Multiple-choice knowledge
+uv run llm-eval run --config configs/model.yaml --task gpqa
+uv run llm-eval run --config configs/model.yaml --task mmlu_pro
+
+# Instruction following
+uv run llm-eval run --config configs/model.yaml --task ifeval
+```
 
 When a run starts, the framework prints the selected task, model, dataset path, worker count, thinking mode, and output directory, then shows a live progress bar (passed / failed / last HTTP status) while cases are processed.
 
@@ -152,6 +177,7 @@ response = client.chat.completions.create(
 | --- | --- | --- | --- |
 | `gsm` | GSM8K | 1319 | Exact match on the final `#### <number>` answer |
 | `aime2025` | AIME 2025 (I+II) | 30 | Integer match on the `\boxed{}` answer |
+| `aime2026` | AIME 2026 (I+II) | 30 | Integer match on the `\boxed{}` answer |
 
 ### Multiple-choice knowledge
 
@@ -160,6 +186,7 @@ The MCQ task asks the model to output `\boxed{A/B/C/D}` and grades by exact lett
 | Task | Dataset | Cases | Coverage |
 | --- | --- | --- | --- |
 | `gpqa` | GPQA-Diamond | 198 | PhD-level science (Physics, Chemistry, Biology) |
+| `mmlu_pro` | MMLU-Pro | 420 | 14 subjects, 10-way choices (30 sampled per category) |
 
 ### Instruction following
 

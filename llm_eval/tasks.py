@@ -362,6 +362,10 @@ class AIMETask(BaseEvaluationTask):
             return actual.strip() == expected.strip()
 
 
+class AIME2026Task(AIMETask):
+    task_name = "aime2026"
+
+
 class GPQATask(BaseEvaluationTask):
     task_name = "gpqa"
 
@@ -395,6 +399,47 @@ class GPQATask(BaseEvaluationTask):
             expected=expected,
             actual=actual,
             metadata={"domain": case.payload.get("domain", "")},
+        )
+
+
+class MMLUProTask(BaseEvaluationTask):
+    task_name = "mmlu_pro"
+    choice_letters = "ABCDEFGHIJ"
+
+    def case_id_for(self, row: dict[str, Any]) -> str:
+        return str(row.get("id", row.get("_row_index", "unknown")))
+
+    def evaluate_case(self, case: TaskCase, client: OpenAICompatibleClient) -> TaskResult:
+        started_at = time.time()
+        row = case.payload
+        options = row["options"]
+        letters = self.choice_letters[: len(options)]
+        rendered = "\n".join(f"{letter}. {text}" for letter, text in zip(letters, options, strict=False))
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "Answer the multiple-choice question. Reason briefly, then give the final "
+                    "answer as \\boxed{X}, where X is the letter of the correct option."
+                ),
+            },
+            {"role": "user", "content": f"{row['question']}\n\n{rendered}"},
+        ]
+        generation = client.generate(messages)
+        if generation.error:
+            return self._api_error_result(case, started_at, generation)
+
+        expected = str(row["answer"]).strip().upper()
+        actual = extract_choice_letter(generation.content, last_letter=letters[-1])
+        is_correct = actual is not None and actual == expected
+        return self._usage_result(
+            case,
+            started_at,
+            generation,
+            status="PASSED" if is_correct else "FAILED",
+            expected=expected,
+            actual=actual,
+            metadata={"domain": row.get("category", "")},
         )
 
 
@@ -494,7 +539,9 @@ TASK_REGISTRY: dict[str, Callable[[FrameworkConfig], BaseEvaluationTask]] = {
     MBPPPlusTask.task_name: MBPPPlusTask,
     GSM8KTask.task_name: GSM8KTask,
     AIMETask.task_name: AIMETask,
+    AIME2026Task.task_name: AIME2026Task,
     GPQATask.task_name: GPQATask,
+    MMLUProTask.task_name: MMLUProTask,
     IFEvalTask.task_name: IFEvalTask,
     LiveCodeBenchTask.task_name: LiveCodeBenchTask,
 }

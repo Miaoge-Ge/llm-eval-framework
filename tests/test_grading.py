@@ -1,6 +1,6 @@
 from llm_eval.clients import GenerationResult
 from llm_eval.runner import _domain_breakdown
-from llm_eval.tasks import AIMETask, GPQATask, LiveCodeBenchTask, TaskCase
+from llm_eval.tasks import AIMETask, GPQATask, LiveCodeBenchTask, MMLUProTask, TaskCase
 from llm_eval.utils import (
     extract_choice_letter,
     extract_last_boxed,
@@ -37,6 +37,12 @@ def test_extract_choice_letter_variants():
     assert extract_choice_letter("I think the answer is (B).") == "B"
     assert extract_choice_letter("Answer: C") == "C"
     assert extract_choice_letter("no clear choice") is None
+
+
+def test_extract_choice_letter_extends_beyond_d():
+    assert extract_choice_letter(r"so the answer is \boxed{H}", last_letter="J") == "H"
+    # default range stops at D, so H is not picked up
+    assert extract_choice_letter(r"\boxed{H}") is None
 
 
 def test_natural_sort_orders_numeric_suffixes():
@@ -85,6 +91,26 @@ def test_livecodebench_grades_stdin_program(fake_config):
     assert passed.status == "PASSED"
 
     failed = task.evaluate_case(case, FakeClient("n = int(input())\nprint(n + 1)"))
+    assert failed.status == "FAILED"
+
+
+def test_mmlu_pro_grades_letter_beyond_d(fake_config):
+    task = MMLUProTask(fake_config)
+    case = TaskCase(
+        case_id="mmlu_pro/1",
+        payload={
+            "question": "Pick the right one.",
+            "options": ["a", "b", "c", "d", "e", "f", "g", "h", "i"],
+            "answer": "H",
+            "category": "biology",
+        },
+    )
+
+    passed = task.evaluate_case(case, FakeClient(r"Reasoning... \boxed{H}"))
+    assert passed.status == "PASSED"
+    assert passed.metadata["domain"] == "biology"
+
+    failed = task.evaluate_case(case, FakeClient(r"\boxed{A}"))
     assert failed.status == "FAILED"
 
 

@@ -38,7 +38,9 @@ datasets/
   MBPPPlus.jsonl
   GSM8K.jsonl
   AIME2025.jsonl
+  AIME2026.jsonl
   GPQA.jsonl
+  MMLUPro.jsonl
   IFEval.jsonl
   LiveCodeBench.jsonl
 scripts/
@@ -107,10 +109,33 @@ uv run llm-eval run --config configs/model.yaml --task gpqa
 uv run python -m llm_eval run --config configs/model.yaml --task gsm
 
 # 列出所有可用任务
-uv run llm-eval --list-tasks
+uv run llm-eval run --list-tasks
 ```
 
 `--config` 默认 `configs/model.yaml`，`--task` 默认 `humaneval`。
+
+### 运行全部评测
+
+```bash
+# 代码生成
+uv run llm-eval run --config configs/model.yaml --task humaneval
+uv run llm-eval run --config configs/model.yaml --task humanevalplus
+uv run llm-eval run --config configs/model.yaml --task mbpp
+uv run llm-eval run --config configs/model.yaml --task mbppplus
+uv run llm-eval run --config configs/model.yaml --task livecodebench
+
+# 数学推理
+uv run llm-eval run --config configs/model.yaml --task gsm
+uv run llm-eval run --config configs/model.yaml --task aime2025
+uv run llm-eval run --config configs/model.yaml --task aime2026
+
+# 多选知识题
+uv run llm-eval run --config configs/model.yaml --task gpqa
+uv run llm-eval run --config configs/model.yaml --task mmlu_pro
+
+# 指令遵循
+uv run llm-eval run --config configs/model.yaml --task ifeval
+```
 
 命令启动后会立即打印：当前任务、模型、数据集路径、并发数、思考模式、输出目录，随后在处理用例时显示实时进度条（通过数 / 失败数 / 最近一次 HTTP 状态码）。
 
@@ -152,6 +177,7 @@ response = client.chat.completions.create(
 | --- | --- | --- | --- |
 | `gsm` | GSM8K | 1319 | 精确匹配 `#### <数字>` 末尾答案 |
 | `aime2025` | AIME 2025 (I+II) | 30 | 对 `\boxed{}` 内答案做整数匹配 |
+| `aime2026` | AIME 2026 (I+II) | 30 | 对 `\boxed{}` 内答案做整数匹配 |
 
 ### 多选知识题
 
@@ -160,6 +186,7 @@ response = client.chat.completions.create(
 | 任务 | 数据集 | 题数 | 覆盖范围 |
 | --- | --- | --- | --- |
 | `gpqa` | GPQA-Diamond | 198 | 博士级科学题（物理、化学、生物） |
+| `mmlu_pro` | MMLU-Pro | 420 | 14 个学科，10 选项（每类采样 30 题） |
 
 ### 指令遵循
 

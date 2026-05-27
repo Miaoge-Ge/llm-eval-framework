@@ -146,18 +146,19 @@ def extract_last_boxed(text: str) -> str | None:
     return None
 
 
-def extract_choice_letter(text: str) -> str | None:
+def extract_choice_letter(text: str, last_letter: str = "D") -> str | None:
     if not text:
         return None
+    char_class = f"[A-{last_letter}]"
     boxed = extract_last_boxed(text)
     if boxed:
-        match = re.search(r"[A-D]", boxed.upper())
+        match = re.search(char_class, boxed.upper())
         if match:
             return match.group(0)
     patterns = [
-        r"answer\s*(?:is|:)?\s*\(?([A-D])\)?",
-        r"\b([A-D])\b\s*$",
-        r"\(([A-D])\)",
+        rf"answer\s*(?:is|:)?\s*\(?({char_class})\)?",
+        rf"\b({char_class})\b\s*$",
+        rf"\(({char_class})\)",
     ]
     upper = text.strip()
     for pattern in patterns:

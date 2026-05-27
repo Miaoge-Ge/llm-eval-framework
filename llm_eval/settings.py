@@ -15,7 +15,9 @@ DEFAULT_DATASET_PATHS = {
     "mbppplus": Path("datasets/MBPPPlus.jsonl"),
     "gsm": Path("datasets/GSM8K.jsonl"),
     "aime2025": Path("datasets/AIME2025.jsonl"),
+    "aime2026": Path("datasets/AIME2026.jsonl"),
     "gpqa": Path("datasets/GPQA.jsonl"),
+    "mmlu_pro": Path("datasets/MMLUPro.jsonl"),
     "ifeval": Path("datasets/IFEval.jsonl"),
     "livecodebench": Path("datasets/LiveCodeBench.jsonl"),
 }
