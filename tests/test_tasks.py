@@ -1,4 +1,4 @@
-from llm_eval.tasks import GSM8KTask, HumanEvalTask, TaskCase
+from llm_eval.tasks import GSM8KTask, HumanEvalTask, MBPPPlusTask, TaskCase
 from llm_eval.utils import extract_python_code
 
 
@@ -27,3 +27,22 @@ def test_gsm_exact_number_match(fake_config):
     task = GSM8KTask(fake_config)
     assert task._numbers_match("18", "18")
     assert not task._numbers_match("19", "18")
+
+
+def test_mbppplus_builds_executable_program(fake_config):
+    task = MBPPPlusTask(fake_config)
+    case = TaskCase(
+        case_id="Mbpp/2",
+        payload={
+            "prompt": "Add one.",
+            "entry_point": "inc",
+            "test_imports": ["from math import inf"],
+            "test": "assert inc(1) == 2",
+        },
+    )
+    program = task.build_test_program(case, "def inc(x):\n    return x + 1")
+    assert "def inc" in program
+    assert "assert inc(1) == 2" in program
+    assert "sys.modules['numpy']" in program
+    assert "from math import inf" in program
+    assert "`inc`" in task.user_prompt(case)

@@ -1,6 +1,6 @@
 from llm_eval.clients import GenerationResult
 from llm_eval.runner import _domain_breakdown
-from llm_eval.tasks import GPQATask, TaskCase
+from llm_eval.tasks import AIMETask, GPQATask, LiveCodeBenchTask, TaskCase
 from llm_eval.utils import (
     extract_choice_letter,
     extract_last_boxed,
@@ -57,6 +57,35 @@ def test_domain_breakdown_aggregates_by_metadata():
         {"status": "PASSED", "metadata": {}},
     ]
     assert _domain_breakdown(results) == [("Biology", 1, 1), ("Physics", 1, 2)]
+
+
+def test_aime_grades_integer_answer(fake_config):
+    task = AIMETask(fake_config)
+    case = TaskCase(case_id="AIME2025-I/0", payload={"problem": "Find x.", "answer": "70"})
+
+    passed = task.evaluate_case(case, FakeClient(r"After working it out, \boxed{070}."))
+    assert passed.status == "PASSED"
+
+    failed = task.evaluate_case(case, FakeClient(r"The answer is \boxed{71}."))
+    assert failed.status == "FAILED"
+
+
+def test_livecodebench_grades_stdin_program(fake_config):
+    task = LiveCodeBenchTask(fake_config)
+    case = TaskCase(
+        case_id="lcb/1",
+        payload={
+            "problem": "Read n, print 2n.",
+            "tests": [{"input": "3\n", "output": "6\n"}, {"input": "10\n", "output": "20\n"}],
+            "difficulty": "easy",
+        },
+    )
+
+    passed = task.evaluate_case(case, FakeClient("n = int(input())\nprint(n * 2)"))
+    assert passed.status == "PASSED"
+
+    failed = task.evaluate_case(case, FakeClient("n = int(input())\nprint(n + 1)"))
+    assert failed.status == "FAILED"
 
 
 def test_gpqa_grades_choice_letter(fake_config):

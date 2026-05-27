@@ -28,14 +28,21 @@ llm_eval/
   settings.py
   tasks.py
   utils.py
+  ifeval/              # vendored 的 Google IFEval 校验器 + 打分胶水代码
 configs/
   model.example.yaml   # 已提交的模板（不含密钥）
 datasets/
   HumanEval.jsonl
   HumanEvalPlus.jsonl
   MBPP.jsonl
+  MBPPPlus.jsonl
   GSM8K.jsonl
+  AIME2025.jsonl
   GPQA.jsonl
+  IFEval.jsonl
+  LiveCodeBench.jsonl
+scripts/
+  fetch_datasets.py    # 从 Hugging Face 重新下载/生成数据集
 tests/
 pyproject.toml
 ```
@@ -136,12 +143,15 @@ response = client.chat.completions.create(
 | `humaneval` | HumanEval | 164 | 执行生成代码并跑单元测试 |
 | `humanevalplus` | HumanEval+ | 164 | 同上，含扩展测试与 numpy 兼容垫片 |
 | `mbpp` | MBPP | 974 | 执行生成代码并跑断言测试 |
+| `mbppplus` | MBPP+ | 378 | EvalPlus 扩展测试，含 numpy 兼容垫片 |
+| `livecodebench` | LiveCodeBench (lite) | 219 | 作为 stdin/stdout 程序运行并比对 public 测试用例 |
 
 ### 数学推理
 
 | 任务 | 数据集 | 题数 | 打分方式 |
 | --- | --- | --- | --- |
 | `gsm` | GSM8K | 1319 | 精确匹配 `#### <数字>` 末尾答案 |
+| `aime2025` | AIME 2025 (I+II) | 30 | 对 `\boxed{}` 内答案做整数匹配 |
 
 ### 多选知识题
 
@@ -150,6 +160,14 @@ response = client.chat.completions.create(
 | 任务 | 数据集 | 题数 | 覆盖范围 |
 | --- | --- | --- | --- |
 | `gpqa` | GPQA-Diamond | 198 | 博士级科学题（物理、化学、生物） |
+
+### 指令遵循
+
+| 任务 | 数据集 | 题数 | 打分方式 |
+| --- | --- | --- | --- |
+| `ifeval` | IFEval | 541 | 对每条指令做程序化校验（prompt 级 strict 准确率） |
+
+`livecodebench` 仅保留 stdin/stdout 题（AtCoder/Codeforces），按明文 public 测试用例打分。`ifeval` 在 `llm_eval/ifeval/` 下 vendored 了 Google 的指令校验器，依赖 `langdetect`。可用 `uv run --with datasets python scripts/fetch_datasets.py <name>` 重新生成任意数据集。
 
 ## 输出产物
 

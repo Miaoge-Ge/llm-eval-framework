@@ -5,6 +5,7 @@ description = "Engineering-first evaluation framework for LLM benchmarking acros
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "langdetect>=1.0.9",
     "openai>=1.52.0",
     "pyyaml>=6.0.3",
     "tqdm>=4.67.1",
@@ -32,6 +33,12 @@ packages = ["llm_eval"]
 [tool.ruff]
 line-length = 120
 target-version = "py310"
+# Vendored Google IFEval checkers — kept verbatim, not subject to our lint rules.
+extend-exclude = [
+    "llm_eval/ifeval/instructions.py",
+    "llm_eval/ifeval/instructions_util.py",
+    "llm_eval/ifeval/instructions_registry.py",
+]
 
 [tool.ruff.lint]
 select = [
@@ -54,6 +61,19 @@ warn_unused_ignores = true
 warn_redundant_casts = true
 no_implicit_optional = true
 check_untyped_defs = true
+
+# Vendored Google IFEval checkers — not type-checked.
+[[tool.mypy.overrides]]
+module = [
+    "llm_eval.ifeval.instructions",
+    "llm_eval.ifeval.instructions_util",
+    "llm_eval.ifeval.instructions_registry",
+]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = ["langdetect.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 addopts = "-q"

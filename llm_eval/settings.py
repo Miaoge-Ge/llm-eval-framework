@@ -12,8 +12,12 @@ DEFAULT_DATASET_PATHS = {
     "humaneval": Path("datasets/HumanEval.jsonl"),
     "humanevalplus": Path("datasets/HumanEvalPlus.jsonl"),
     "mbpp": Path("datasets/MBPP.jsonl"),
+    "mbppplus": Path("datasets/MBPPPlus.jsonl"),
     "gsm": Path("datasets/GSM8K.jsonl"),
+    "aime2025": Path("datasets/AIME2025.jsonl"),
     "gpqa": Path("datasets/GPQA.jsonl"),
+    "ifeval": Path("datasets/IFEval.jsonl"),
+    "livecodebench": Path("datasets/LiveCodeBench.jsonl"),
 }
 
 

@@ -9,15 +9,19 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from .clients import GenerationResult, OpenAICompatibleClient
+from .ifeval import evaluate as evaluate_ifeval
 from .settings import FrameworkConfig
 from .utils import (
     dedent_code,
     execute_python,
     extract_choice_letter,
+    extract_last_boxed,
     extract_python_code,
     indent_block,
     last_numeric_token,
     load_jsonl,
+    normalize_stdout,
+    run_python_with_stdin,
 )
 
 DEFAULT_TASK_NAME = "humaneval"
@@ -251,6 +255,28 @@ class MBPPTask(CodeGenerationTask):
         return "\n\n".join(section for section in sections if section)
 
 
+class MBPPPlusTask(CodeGenerationTask):
+    task_name = "mbppplus"
+
+    numpy_shim = HumanEvalPlusTask.numpy_shim
+
+    def case_id_for(self, row: dict[str, Any]) -> str:
+        return str(row["task_id"])
+
+    def user_prompt(self, case: TaskCase) -> str:
+        return (
+            f"Write a Python solution for this problem:\n{case.payload['prompt']}\n"
+            f"The public function must be named `{case.payload['entry_point']}`.\n"
+            "Return only code."
+        )
+
+    def build_test_program(self, case: TaskCase, generated_code: str) -> str:
+        sections = [self.shared_header, self.numpy_shim, generated_code]
+        sections.extend(case.payload.get("test_imports") or [])
+        sections.append(case.payload["test"].strip())
+        return "\n\n".join(section for section in sections if section)
+
+
 class GSM8KTask(BaseEvaluationTask):
     task_name = "gsm"
 
@@ -291,6 +317,51 @@ class GSM8KTask(BaseEvaluationTask):
             return actual.strip() == expected.strip()
 
 
+class AIMETask(BaseEvaluationTask):
+    task_name = "aime2025"
+
+    def case_id_for(self, row: dict[str, Any]) -> str:
+        return str(row.get("id", row.get("_row_index", "unknown")))
+
+    def evaluate_case(self, case: TaskCase, client: OpenAICompatibleClient) -> TaskResult:
+        started_at = time.time()
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "Solve the AIME competition math problem step by step. "
+                    "The final answer is an integer between 0 and 999. "
+                    "Put it inside \\boxed{} on the last line."
+                ),
+            },
+            {"role": "user", "content": case.payload["problem"]},
+        ]
+        generation = client.generate(messages)
+        if generation.error:
+            return self._api_error_result(case, started_at, generation)
+
+        boxed = extract_last_boxed(generation.content)
+        actual = last_numeric_token(boxed) if boxed else last_numeric_token(generation.content)
+        expected = last_numeric_token(str(case.payload["answer"]))
+        is_correct = self._integers_match(actual, expected)
+        return self._usage_result(
+            case,
+            started_at,
+            generation,
+            status="PASSED" if is_correct else "FAILED",
+            expected=case.payload["answer"],
+            actual=actual,
+        )
+
+    def _integers_match(self, actual: str | None, expected: str | None) -> bool:
+        if actual is None or expected is None:
+            return False
+        try:
+            return int(round(float(actual))) == int(round(float(expected)))
+        except ValueError:
+            return actual.strip() == expected.strip()
+
+
 class GPQATask(BaseEvaluationTask):
     task_name = "gpqa"
 
@@ -327,10 +398,103 @@ class GPQATask(BaseEvaluationTask):
         )
 
 
+class IFEvalTask(BaseEvaluationTask):
+    task_name = "ifeval"
+
+    def case_id_for(self, row: dict[str, Any]) -> str:
+        return str(row.get("key", row.get("_row_index", "unknown")))
+
+    def evaluate_case(self, case: TaskCase, client: OpenAICompatibleClient) -> TaskResult:
+        started_at = time.time()
+        messages = [{"role": "user", "content": case.payload["prompt"]}]
+        generation = client.generate(messages)
+        if generation.error:
+            return self._api_error_result(case, started_at, generation)
+
+        report = evaluate_ifeval(
+            case.payload["prompt"],
+            generation.content or "",
+            list(case.payload["instruction_id_list"]),
+            list(case.payload.get("kwargs") or []),
+        )
+        total = report["instructions_total"]
+        strict = report["instructions_followed_strict"]
+        loose = report["instructions_followed_loose"]
+        return self._usage_result(
+            case,
+            started_at,
+            generation,
+            status="PASSED" if report["prompt_strict"] else "FAILED",
+            expected=f"follow all {total} instructions",
+            actual=f"strict {strict}/{total}, loose {loose}/{total}",
+            metadata={
+                "prompt_loose": report["prompt_loose"],
+                "instructions_total": total,
+                "instructions_followed_strict": strict,
+                "instructions_followed_loose": loose,
+            },
+        )
+
+
+class LiveCodeBenchTask(BaseEvaluationTask):
+    task_name = "livecodebench"
+
+    system_prompt = (
+        "You are a competitive programming expert. Write a complete Python 3 program "
+        "that reads from standard input and prints the answer to standard output. "
+        "Return only the program code, without explanations or Markdown."
+    )
+
+    def case_id_for(self, row: dict[str, Any]) -> str:
+        return str(row.get("question_id", row.get("_row_index", "unknown")))
+
+    def evaluate_case(self, case: TaskCase, client: OpenAICompatibleClient) -> TaskResult:
+        started_at = time.time()
+        messages = [
+            {"role": "system", "content": self.system_prompt},
+            {"role": "user", "content": case.payload["problem"]},
+        ]
+        generation = client.generate(messages)
+        if generation.error:
+            return self._api_error_result(case, started_at, generation)
+
+        code = extract_python_code(generation.content)
+        timeout = self.config.run.execution_timeout_seconds
+        tests = case.payload.get("tests") or []
+        status, detail = self._run_tests(code, tests, timeout)
+        return self._usage_result(
+            case,
+            started_at,
+            generation,
+            status=status,
+            actual="passed" if status == "PASSED" else detail,
+            error=None if status == "PASSED" else detail,
+            metadata={
+                "domain": case.payload.get("difficulty", ""),
+                "platform": case.payload.get("platform", ""),
+            },
+        )
+
+    def _run_tests(self, code: str, tests: list[dict[str, str]], timeout: int) -> tuple[str, str]:
+        for index, test in enumerate(tests):
+            run_status, stdout, error = run_python_with_stdin(code, test["input"], timeout)
+            if run_status == "TIMEOUT":
+                return "TIMEOUT", f"test {index}: {error}"
+            if run_status != "OK":
+                return "FAILED", f"test {index} runtime error: {error[:160]}"
+            if normalize_stdout(stdout) != normalize_stdout(test["output"]):
+                return "FAILED", f"test {index}: wrong answer"
+        return "PASSED", ""
+
+
 TASK_REGISTRY: dict[str, Callable[[FrameworkConfig], BaseEvaluationTask]] = {
     HumanEvalTask.task_name: HumanEvalTask,
     HumanEvalPlusTask.task_name: HumanEvalPlusTask,
     MBPPTask.task_name: MBPPTask,
+    MBPPPlusTask.task_name: MBPPPlusTask,
     GSM8KTask.task_name: GSM8KTask,
+    AIMETask.task_name: AIMETask,
     GPQATask.task_name: GPQATask,
+    IFEvalTask.task_name: IFEvalTask,
+    LiveCodeBenchTask.task_name: LiveCodeBenchTask,
 }

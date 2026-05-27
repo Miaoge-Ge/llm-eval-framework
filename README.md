@@ -28,14 +28,21 @@ llm_eval/
   settings.py
   tasks.py
   utils.py
+  ifeval/              # vendored Google IFEval checkers + scoring glue
 configs/
   model.example.yaml   # committed template (no secrets)
 datasets/
   HumanEval.jsonl
   HumanEvalPlus.jsonl
   MBPP.jsonl
+  MBPPPlus.jsonl
   GSM8K.jsonl
+  AIME2025.jsonl
   GPQA.jsonl
+  IFEval.jsonl
+  LiveCodeBench.jsonl
+scripts/
+  fetch_datasets.py    # re-download / regenerate datasets from Hugging Face
 tests/
 pyproject.toml
 ```
@@ -136,12 +143,15 @@ response = client.chat.completions.create(
 | `humaneval` | HumanEval | 164 | Execute generated code against unit tests |
 | `humanevalplus` | HumanEval+ | 164 | Same, with extended tests and a numpy shim |
 | `mbpp` | MBPP | 974 | Execute generated code against assertion tests |
+| `mbppplus` | MBPP+ | 378 | EvalPlus extended tests, with a numpy shim |
+| `livecodebench` | LiveCodeBench (lite) | 219 | Run as a stdin/stdout program against public test cases |
 
 ### Math reasoning
 
 | Task | Dataset | Cases | Grading |
 | --- | --- | --- | --- |
 | `gsm` | GSM8K | 1319 | Exact match on the final `#### <number>` answer |
+| `aime2025` | AIME 2025 (I+II) | 30 | Integer match on the `\boxed{}` answer |
 
 ### Multiple-choice knowledge
 
@@ -150,6 +160,14 @@ The MCQ task asks the model to output `\boxed{A/B/C/D}` and grades by exact lett
 | Task | Dataset | Cases | Coverage |
 | --- | --- | --- | --- |
 | `gpqa` | GPQA-Diamond | 198 | PhD-level science (Physics, Chemistry, Biology) |
+
+### Instruction following
+
+| Task | Dataset | Cases | Grading |
+| --- | --- | --- | --- |
+| `ifeval` | IFEval | 541 | Programmatic verification of each instruction (prompt-level strict accuracy) |
+
+`livecodebench` keeps only stdin/stdout problems (AtCoder/Codeforces) and grades against the plaintext public test cases. `ifeval` vendors Google's instruction checkers under `llm_eval/ifeval/` and depends on `langdetect`. Regenerate any dataset with `uv run --with datasets python scripts/fetch_datasets.py <name>`.
 
 ## Output
 
