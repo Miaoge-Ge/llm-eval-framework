@@ -14,12 +14,10 @@ from .utils import (
     dedent_code,
     execute_python,
     extract_choice_letter,
-    extract_last_boxed,
     extract_python_code,
     indent_block,
     last_numeric_token,
     load_jsonl,
-    normalize_math_answer,
 )
 
 DEFAULT_TASK_NAME = "humaneval"
@@ -293,42 +291,6 @@ class GSM8KTask(BaseEvaluationTask):
             return actual.strip() == expected.strip()
 
 
-class Math500Task(BaseEvaluationTask):
-    task_name = "math500"
-
-    def case_id_for(self, row: dict[str, Any]) -> str:
-        return str(row.get("unique_id", row.get("_row_index", "unknown")))
-
-    def evaluate_case(self, case: TaskCase, client: OpenAICompatibleClient) -> TaskResult:
-        started_at = time.time()
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "Solve the competition math problem step by step. "
-                    "Put the final answer inside \\boxed{} on the last line."
-                ),
-            },
-            {"role": "user", "content": case.payload["problem"]},
-        ]
-        generation = client.generate(messages)
-        if generation.error:
-            return self._api_error_result(case, started_at, generation)
-
-        boxed = extract_last_boxed(generation.content)
-        expected = normalize_math_answer(case.payload["answer"])
-        actual = normalize_math_answer(boxed)
-        is_correct = expected is not None and actual is not None and expected == actual
-        return self._usage_result(
-            case,
-            started_at,
-            generation,
-            status="PASSED" if is_correct else "FAILED",
-            expected=case.payload["answer"],
-            actual=boxed,
-        )
-
-
 class GPQATask(BaseEvaluationTask):
     task_name = "gpqa"
 
@@ -365,93 +327,10 @@ class GPQATask(BaseEvaluationTask):
         )
 
 
-class FourChoiceTask(BaseEvaluationTask):
-    """Base class for tasks where each row has fields A/B/C/D and an 'answer' field."""
-
-    system_prompt: str = (
-        "Answer the multiple-choice question. Reason briefly, "
-        "then give the final answer as \\boxed{A}, \\boxed{B}, \\boxed{C}, or \\boxed{D}."
-    )
-    metadata_field: str = "subject"
-
-    def case_id_for(self, row: dict[str, Any]) -> str:
-        return str(row.get("id", row.get("_row_index", "unknown")))
-
-    def _build_user_prompt(self, case: TaskCase) -> str:
-        row = case.payload
-        question = row.get("question") or row.get("ctx", "")
-        choices = "\n".join(f"{letter}. {row[letter]}" for letter in "ABCD" if letter in row)
-        return f"{question}\n\n{choices}"
-
-    def evaluate_case(self, case: TaskCase, client: OpenAICompatibleClient) -> TaskResult:
-        started_at = time.time()
-        messages = [
-            {"role": "system", "content": self.system_prompt},
-            {"role": "user", "content": self._build_user_prompt(case)},
-        ]
-        generation = client.generate(messages)
-        if generation.error:
-            return self._api_error_result(case, started_at, generation)
-
-        expected = str(case.payload["answer"]).strip().upper()
-        actual = extract_choice_letter(generation.content)
-        is_correct = actual is not None and actual == expected
-        domain_value = case.payload.get(self.metadata_field, "")
-        return self._usage_result(
-            case,
-            started_at,
-            generation,
-            status="PASSED" if is_correct else "FAILED",
-            expected=expected,
-            actual=actual,
-            metadata={"domain": domain_value},
-        )
-
-
-class MMLUTask(FourChoiceTask):
-    task_name = "mmlu"
-    metadata_field = "subject"
-
-
-class ARCChallengeTask(FourChoiceTask):
-    task_name = "arc_challenge"
-    metadata_field = "subject"
-
-
-class HellaSwagTask(FourChoiceTask):
-    task_name = "hellaswag"
-    metadata_field = "activity"
-    system_prompt = (
-        "You are given a partial description of an activity and four possible continuations. "
-        "Choose the most natural and plausible continuation. "
-        "Reason briefly, then give the final answer as \\boxed{A}, \\boxed{B}, \\boxed{C}, or \\boxed{D}."
-    )
-
-    def _build_user_prompt(self, case: TaskCase) -> str:
-        row = case.payload
-        ctx = row.get("ctx", row.get("question", ""))
-        choices = "\n".join(f"{letter}. {row[letter]}" for letter in "ABCD" if letter in row)
-        return f"Activity context: {ctx}\n\nWhich is the most natural continuation?\n\n{choices}"
-
-
-class CEvalTask(FourChoiceTask):
-    task_name = "ceval"
-    metadata_field = "subject"
-    system_prompt = (
-        "请回答以下多项选择题。请简要分析，然后将最终答案写在 "
-        "\\boxed{A}、\\boxed{B}、\\boxed{C} 或 \\boxed{D} 中。"
-    )
-
-
 TASK_REGISTRY: dict[str, Callable[[FrameworkConfig], BaseEvaluationTask]] = {
     HumanEvalTask.task_name: HumanEvalTask,
     HumanEvalPlusTask.task_name: HumanEvalPlusTask,
     MBPPTask.task_name: MBPPTask,
     GSM8KTask.task_name: GSM8KTask,
-    Math500Task.task_name: Math500Task,
     GPQATask.task_name: GPQATask,
-    MMLUTask.task_name: MMLUTask,
-    ARCChallengeTask.task_name: ARCChallengeTask,
-    HellaSwagTask.task_name: HellaSwagTask,
-    CEvalTask.task_name: CEvalTask,
 }

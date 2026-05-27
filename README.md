@@ -31,16 +31,11 @@ llm_eval/
 configs/
   model.example.yaml   # committed template (no secrets)
 datasets/
-  humaneval.jsonl
-  humanevalplus.jsonl
-  mbpp.jsonl
-  gsm.jsonl
-  math500.jsonl
-  gpqa.jsonl
-  mmlu.jsonl
-  arc_challenge.jsonl
-  hellaswag.jsonl
-  ceval.jsonl
+  HumanEval.jsonl
+  HumanEvalPlus.jsonl
+  MBPP.jsonl
+  GSM8K.jsonl
+  GPQA.jsonl
 tests/
 pyproject.toml
 ```
@@ -99,7 +94,7 @@ The output directory is fixed to `results/<model_name>/`.
 
 ```bash
 # run a benchmark
-uv run llm-eval run --config configs/model.yaml --task mmlu
+uv run llm-eval run --config configs/model.yaml --task gpqa
 
 # equivalent module form
 uv run python -m llm_eval run --config configs/model.yaml --task gsm
@@ -147,19 +142,14 @@ response = client.chat.completions.create(
 | Task | Dataset | Cases | Grading |
 | --- | --- | --- | --- |
 | `gsm` | GSM8K | 1319 | Exact match on the final `#### <number>` answer |
-| `math500` | MATH-500 | 500 | Normalize and match the `\boxed{}` answer |
 
 ### Multiple-choice knowledge
 
-All MCQ tasks ask the model to output `\boxed{A/B/C/D}` and grade by exact letter match. The report includes a per-subject or per-domain accuracy breakdown.
+The MCQ task asks the model to output `\boxed{A/B/C/D}` and grades by exact letter match. The report includes a per-domain accuracy breakdown.
 
 | Task | Dataset | Cases | Coverage |
 | --- | --- | --- | --- |
 | `gpqa` | GPQA-Diamond | 198 | PhD-level science (Physics, Chemistry, Biology) |
-| `mmlu` | MMLU | 40 | General knowledge across 10 subjects |
-| `arc_challenge` | ARC-Challenge | 35 | Grade-school to high-school science reasoning |
-| `hellaswag` | HellaSwag | 20 | Commonsense activity completion |
-| `ceval` | C-Eval | 40 | Chinese multi-subject knowledge (Chinese language) |
 
 ## Output
 

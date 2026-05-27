@@ -1,11 +1,10 @@
 from llm_eval.clients import GenerationResult
 from llm_eval.runner import _domain_breakdown
-from llm_eval.tasks import GPQATask, Math500Task, TaskCase
+from llm_eval.tasks import GPQATask, TaskCase
 from llm_eval.utils import (
     extract_choice_letter,
     extract_last_boxed,
     natural_sort_key,
-    normalize_math_answer,
 )
 
 
@@ -33,13 +32,6 @@ def test_extract_last_boxed_missing_returns_none():
     assert extract_last_boxed("no box here") is None
 
 
-def test_normalize_math_answer_equivalences():
-    assert normalize_math_answer(r"\left( 3, \frac{\pi}{2} \right)") == normalize_math_answer(r"(3, \frac{\pi}{2})")
-    assert normalize_math_answer(r"\dfrac{1}{2}") == normalize_math_answer(r"\frac{1}{2}")
-    assert normalize_math_answer("42.") == "42"
-    assert normalize_math_answer("   ") is None
-
-
 def test_extract_choice_letter_variants():
     assert extract_choice_letter(r"reasoning ... \boxed{D}") == "D"
     assert extract_choice_letter("I think the answer is (B).") == "B"
@@ -65,17 +57,6 @@ def test_domain_breakdown_aggregates_by_metadata():
         {"status": "PASSED", "metadata": {}},
     ]
     assert _domain_breakdown(results) == [("Biology", 1, 1), ("Physics", 1, 2)]
-
-
-def test_math500_grades_boxed_answer(fake_config):
-    task = Math500Task(fake_config)
-    case = TaskCase(case_id="math/1", payload={"problem": "1+1?", "answer": r"\frac{1}{2}"})
-
-    passed = task.evaluate_case(case, FakeClient(r"The answer is \boxed{\dfrac{1}{2}}."))
-    assert passed.status == "PASSED"
-
-    failed = task.evaluate_case(case, FakeClient(r"\boxed{3}"))
-    assert failed.status == "FAILED"
 
 
 def test_gpqa_grades_choice_letter(fake_config):

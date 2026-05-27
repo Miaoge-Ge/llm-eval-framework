@@ -146,26 +146,6 @@ def extract_last_boxed(text: str) -> str | None:
     return None
 
 
-def normalize_math_answer(text: str | None) -> str | None:
-    if text is None:
-        return None
-    value = text.strip()
-    if not value:
-        return None
-    for wrapper in ("\\left", "\\right", "\\,", "\\!", "\\ ", "\\;", "\\:", "$", "\\$"):
-        value = value.replace(wrapper, "")
-    value = re.sub(r"\\text\s*\{([^}]*)\}", r"\1", value)
-    value = re.sub(r"\\mbox\s*\{([^}]*)\}", r"\1", value)
-    value = value.replace("\\dfrac", "\\frac").replace("\\tfrac", "\\frac")
-    value = value.replace("\\%", "").replace("%", "")
-    value = value.replace("^{\\circ}", "").replace("^\\circ", "").replace("{}^\\circ", "")
-    value = value.replace(" ", "")
-    if value.endswith("."):
-        value = value[:-1]
-    value = value.replace("dollars", "").replace("\\cdot", "*")
-    return value or None
-
-
 def extract_choice_letter(text: str) -> str | None:
     if not text:
         return None

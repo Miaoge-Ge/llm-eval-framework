@@ -31,16 +31,11 @@ llm_eval/
 configs/
   model.example.yaml   # 已提交的模板（不含密钥）
 datasets/
-  humaneval.jsonl
-  humanevalplus.jsonl
-  mbpp.jsonl
-  gsm.jsonl
-  math500.jsonl
-  gpqa.jsonl
-  mmlu.jsonl
-  arc_challenge.jsonl
-  hellaswag.jsonl
-  ceval.jsonl
+  HumanEval.jsonl
+  HumanEvalPlus.jsonl
+  MBPP.jsonl
+  GSM8K.jsonl
+  GPQA.jsonl
 tests/
 pyproject.toml
 ```
@@ -99,7 +94,7 @@ reasoning_effort:
 
 ```bash
 # 运行某个评测任务
-uv run llm-eval run --config configs/model.yaml --task mmlu
+uv run llm-eval run --config configs/model.yaml --task gpqa
 
 # 等价的模块形式
 uv run python -m llm_eval run --config configs/model.yaml --task gsm
@@ -147,19 +142,14 @@ response = client.chat.completions.create(
 | 任务 | 数据集 | 题数 | 打分方式 |
 | --- | --- | --- | --- |
 | `gsm` | GSM8K | 1319 | 精确匹配 `#### <数字>` 末尾答案 |
-| `math500` | MATH-500 | 500 | 归一化后匹配 `\boxed{}` 内的答案 |
 
 ### 多选知识题
 
-所有多选任务要求模型输出 `\boxed{A/B/C/D}`，按字母精确匹配打分。报告中会自动生成分学科 / 分领域准确率明细。
+多选任务要求模型输出 `\boxed{A/B/C/D}`，按字母精确匹配打分。报告中会自动生成分领域准确率明细。
 
 | 任务 | 数据集 | 题数 | 覆盖范围 |
 | --- | --- | --- | --- |
 | `gpqa` | GPQA-Diamond | 198 | 博士级科学题（物理、化学、生物） |
-| `mmlu` | MMLU | 40 | 通用知识，覆盖 10 个学科 |
-| `arc_challenge` | ARC-Challenge | 35 | 初中至高中理科推理 |
-| `hellaswag` | HellaSwag | 20 | 常识活动场景续写 |
-| `ceval` | C-Eval | 40 | 中文多学科知识（中文题目） |
 
 ## 输出产物
 

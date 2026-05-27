@@ -5,7 +5,7 @@ def test_list_tasks_prints_registry(capsys):
     exit_code = main(["run", "--list-tasks"])
     out = capsys.readouterr().out
     assert exit_code == 0
-    for name in ("humaneval", "gsm", "math500", "gpqa"):
+    for name in ("humaneval", "gsm", "mbpp", "gpqa"):
         assert name in out
 
 
