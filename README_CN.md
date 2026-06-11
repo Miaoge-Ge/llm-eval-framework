@@ -23,9 +23,12 @@
 llm_eval/
   cli.py
   clients.py
-  reporting.py
+  execution.py         # 子进程运行生成代码
+  extraction.py        # 答案提取（代码块、\boxed{}、选项字母、数字）
+  reporting.py         # 运行落盘（JSONL + 配置快照）与 Markdown 渲染
   runner.py
   settings.py
+  status.py            # 用例状态常量
   tasks.py
   utils.py
   ifeval/              # vendored 的 Google IFEval 校验器 + 打分胶水代码
@@ -97,7 +100,7 @@ reasoning_effort:
 | `thinking_enabled` | `true`/`false`（也接受 `enabled`/`disabled`） |
 | `reasoning_effort` | `low`/`medium`/`high`/`max`，仅在开启思考模式时发送 |
 
-输出目录固定为 `results/<model_name>/`。
+每次运行写入 `results/<model_name>/<task>/` 下独立的时间戳目录（模型名会做 slug 处理,`org/model:beta` 这类 id 在任何平台都安全)。
 
 ## CLI 用法
 
@@ -108,11 +111,14 @@ uv run llm-eval run --config configs/model.yaml --task gpqa
 # 等价的模块形式
 uv run python -m llm_eval run --config configs/model.yaml --task gsm
 
+# 冒烟测试：只跑前 5 个用例，并发 2
+uv run llm-eval run --config configs/model.yaml --task gsm --limit 5 --workers 2
+
 # 列出所有可用任务
 uv run llm-eval run --list-tasks
 ```
 
-`--config` 默认 `configs/model.yaml`，`--task` 默认 `humaneval`。
+`--config` 默认 `configs/model.yaml`，`--task` 默认 `humaneval`。`--workers` 覆盖配置文件中的并发数；`--limit N` 只跑前 N 个用例，适合在全量评测前先验证新接口。
 
 ### 运行全部评测
 
@@ -198,19 +204,26 @@ response = client.chat.completions.create(
 
 ## 输出产物
 
-每次运行只写入一个自包含的 Markdown 报告：
+每次运行写入独立的时间戳目录：
 
 ```text
-results/<model_name>/<task>_report.md
+results/<model_name>/<task>/<YYYYMMDD-HHMMSS>/
+  results.jsonl   # 每个用例一行，完成即写入
+  config.json     # 本次运行的有效配置快照（API Key 已脱敏）
+  report.md       # 人类可读的评测报告
 ```
 
-报告包含：
+`results.jsonl` 每完成一个用例就 flush 一次，运行中途崩溃或被中止也能保留已打分的全部结果，且原始记录可用于二次分析。重复运行不会覆盖之前的结果。
+
+`report.md` 包含：
 
 - **Overview** — 任务、模型、数据集、并发数、思考模式
-- **Metrics** — 通过率、总用时、吞吐、prompt/completion/total tokens
+- **Metrics** — 通过率、总用例 / 完成 / 参与打分用例数、总用时、吞吐、prompt/completion/total tokens（参与打分 = 通过 + 失败 + 超时；API 报错不计入通过率分母）
 - **Status counts** — 各状态（通过 / 失败 / 报错等）计数
 - **Accuracy by domain** — 分学科准确率明细（仅知识题任务）
 - **Results** — 逐条结果表：状态、用时、tokens、详情列
+
+> **安全提示：** 代码生成类任务会在你的机器上直接执行模型生成的 Python 代码，除 `execution_timeout_seconds` 外没有任何沙箱隔离。请只评测你信任的模型和数据集，或在容器 / 虚拟机中运行。
 
 ## 开发
 

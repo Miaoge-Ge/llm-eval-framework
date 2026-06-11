@@ -1,11 +1,12 @@
 from llm_eval.clients import GenerationResult
-from llm_eval.runner import _domain_breakdown
-from llm_eval.tasks import AIMETask, GPQATask, LiveCodeBenchTask, MMLUProTask, TaskCase
-from llm_eval.utils import (
+from llm_eval.extraction import (
     extract_choice_letter,
     extract_last_boxed,
-    natural_sort_key,
+    last_numeric_token,
 )
+from llm_eval.reporting import _domain_breakdown
+from llm_eval.tasks import AIMETask, GPQATask, LiveCodeBenchTask, MMLUProTask, TaskCase
+from llm_eval.utils import natural_sort_key
 
 
 class FakeClient:
@@ -37,6 +38,20 @@ def test_extract_choice_letter_variants():
     assert extract_choice_letter("I think the answer is (B).") == "B"
     assert extract_choice_letter("Answer: C") == "C"
     assert extract_choice_letter("no clear choice") is None
+
+
+def test_extract_choice_letter_ignores_lowercase_prose():
+    # The article "a" at the end of a line must not be read as answer A.
+    assert extract_choice_letter("I think the best option is clearly a") is None
+    assert extract_choice_letter("pick choice (b) or others") is None
+    # An explicit "answer is" context still accepts lowercase.
+    assert extract_choice_letter("The answer is b") == "B"
+
+
+def test_last_numeric_token_requires_digits():
+    assert last_numeric_token("no digits, just commas , here") is None
+    assert last_numeric_token("#### 1,234") == "1234"
+    assert last_numeric_token("the total is 42.") == "42"
 
 
 def test_extract_choice_letter_extends_beyond_d():

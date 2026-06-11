@@ -1,5 +1,5 @@
+from llm_eval.extraction import extract_python_code
 from llm_eval.tasks import GSM8KTask, HumanEvalTask, MBPPPlusTask, TaskCase
-from llm_eval.utils import extract_python_code
 
 
 def test_extract_python_code_prefers_fenced_block():

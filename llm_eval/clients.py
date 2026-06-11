@@ -33,6 +33,8 @@ class OpenAICompatibleClient:
     def generate(self, messages: list[dict[str, str]]) -> GenerationResult:
         last_error = "Unknown generation error"
         last_status_code: int | None = None
+        # Tokens consumed by failed attempts still count against the run.
+        total_usage = _empty_usage()
         for attempt in range(MAX_ATTEMPTS):
             try:
                 kwargs: dict[str, Any] = {
@@ -48,28 +50,30 @@ class OpenAICompatibleClient:
 
                 raw_response = self.client.chat.completions.with_raw_response.create(**kwargs)
                 content, usage = self._consume_stream(raw_response.parse())
+                _merge_usage(total_usage, usage)
                 if content:
-                    return GenerationResult(content=content, usage=usage, http_status_code=raw_response.status_code)
+                    return GenerationResult(
+                        content=content, usage=total_usage, http_status_code=raw_response.status_code
+                    )
                 last_error = "Model returned an empty completion"
                 last_status_code = raw_response.status_code
-                if attempt < MAX_ATTEMPTS - 1:
-                    time.sleep(1 + attempt)
             except Exception as exc:
                 last_error = str(exc).replace("\n", " ")
                 last_status_code = getattr(exc, "status_code", None)
                 if self._is_fatal_error(last_error):
                     return GenerationResult(
                         content="",
-                        usage=_empty_usage(),
+                        usage=total_usage,
                         error=last_error,
                         fatal=True,
                         http_status_code=last_status_code,
                     )
+            if attempt < MAX_ATTEMPTS - 1:
                 time.sleep(1 + attempt)
 
         return GenerationResult(
             content="",
-            usage=_empty_usage(),
+            usage=total_usage,
             error=last_error,
             fatal=False,
             http_status_code=last_status_code,
@@ -98,3 +102,8 @@ class OpenAICompatibleClient:
 
 def _empty_usage() -> dict[str, int]:
     return {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+
+def _merge_usage(total: dict[str, int], delta: dict[str, int]) -> None:
+    for key in total:
+        total[key] += delta.get(key, 0)

@@ -4,27 +4,29 @@ import math
 import re
 import time
 from abc import ABC, abstractmethod
-from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from .clients import GenerationResult, OpenAICompatibleClient
-from .ifeval import evaluate as evaluate_ifeval
-from .settings import FrameworkConfig
-from .utils import (
+from .execution import execute_python, normalize_stdout, run_python_with_stdin
+from .extraction import (
     dedent_code,
-    execute_python,
     extract_choice_letter,
     extract_last_boxed,
     extract_python_code,
     indent_block,
     last_numeric_token,
-    load_jsonl,
-    normalize_stdout,
-    run_python_with_stdin,
 )
+from .ifeval import evaluate as evaluate_ifeval
+from .settings import FrameworkConfig
+from .status import Status
+from .utils import load_jsonl
 
 DEFAULT_TASK_NAME = "humaneval"
+
+# Populated automatically: any subclass that defines its own `task_name`
+# registers itself via BaseEvaluationTask.__init_subclass__.
+TASK_REGISTRY: dict[str, type[BaseEvaluationTask]] = {}
 
 
 @dataclass(frozen=True)
@@ -54,7 +56,15 @@ class TaskResult:
 
 
 class BaseEvaluationTask(ABC):
-    task_name: str
+    task_name: str = ""
+    # Looked up in order to build a case id; falls back to the row index.
+    id_fields: tuple[str, ...] = ("id",)
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        registered_name = cls.__dict__.get("task_name")
+        if registered_name:
+            TASK_REGISTRY[registered_name] = cls
 
     def __init__(self, config: FrameworkConfig) -> None:
         self.config = config
@@ -64,9 +74,11 @@ class BaseEvaluationTask(ABC):
         rows = load_jsonl(self.dataset_path)
         return [TaskCase(case_id=self.case_id_for(row), payload=row) for row in rows]
 
-    @abstractmethod
     def case_id_for(self, row: dict[str, Any]) -> str:
-        raise NotImplementedError
+        for field_name in self.id_fields:
+            if field_name in row:
+                return str(row[field_name])
+        return str(row.get("_row_index", "unknown"))
 
     @abstractmethod
     def evaluate_case(self, case: TaskCase, client: OpenAICompatibleClient) -> TaskResult:
@@ -75,7 +87,7 @@ class BaseEvaluationTask(ABC):
     def _api_error_result(self, case: TaskCase, started_at: float, generation: GenerationResult) -> TaskResult:
         return TaskResult(
             case_id=case.case_id,
-            status="API_ERROR_FATAL" if generation.fatal else "API_ERROR",
+            status=Status.API_ERROR_FATAL if generation.fatal else Status.API_ERROR,
             duration_seconds=time.time() - started_at,
             http_status_code=generation.http_status_code,
             error=generation.error,
@@ -148,8 +160,8 @@ class CodeGenerationTask(BaseEvaluationTask):
             started_at,
             generation,
             status=status,
-            actual=details if status != "PASSED" else "passed",
-            error=details if status != "PASSED" else None,
+            actual=details if status != Status.PASSED else "passed",
+            error=details if status != Status.PASSED else None,
         )
 
     def normalize_candidate(self, case: TaskCase, raw_text: str) -> str:
@@ -158,9 +170,7 @@ class CodeGenerationTask(BaseEvaluationTask):
 
 class HumanEvalTask(CodeGenerationTask):
     task_name = "humaneval"
-
-    def case_id_for(self, row: dict[str, Any]) -> str:
-        return str(row["task_id"])
+    id_fields = ("task_id",)
 
     def user_prompt(self, case: TaskCase) -> str:
         prompt = case.payload["prompt"].rstrip()
@@ -225,9 +235,7 @@ class HumanEvalPlusTask(HumanEvalTask):
 
 class MBPPTask(CodeGenerationTask):
     task_name = "mbpp"
-
-    def case_id_for(self, row: dict[str, Any]) -> str:
-        return str(row["task_id"])
+    id_fields = ("task_id",)
 
     def user_prompt(self, case: TaskCase) -> str:
         tests = case.payload.get("test_list") or []
@@ -257,11 +265,9 @@ class MBPPTask(CodeGenerationTask):
 
 class MBPPPlusTask(CodeGenerationTask):
     task_name = "mbppplus"
+    id_fields = ("task_id",)
 
     numpy_shim = HumanEvalPlusTask.numpy_shim
-
-    def case_id_for(self, row: dict[str, Any]) -> str:
-        return str(row["task_id"])
 
     def user_prompt(self, case: TaskCase) -> str:
         return (
@@ -279,9 +285,7 @@ class MBPPPlusTask(CodeGenerationTask):
 
 class GSM8KTask(BaseEvaluationTask):
     task_name = "gsm"
-
-    def case_id_for(self, row: dict[str, Any]) -> str:
-        return str(row.get("_row_index", row.get("id", "unknown")))
+    id_fields = ("_row_index",)
 
     def evaluate_case(self, case: TaskCase, client: OpenAICompatibleClient) -> TaskResult:
         started_at = time.time()
@@ -303,7 +307,7 @@ class GSM8KTask(BaseEvaluationTask):
             case,
             started_at,
             generation,
-            status="PASSED" if is_correct else "FAILED",
+            status=Status.PASSED if is_correct else Status.FAILED,
             expected=expected,
             actual=actual,
         )
@@ -319,9 +323,6 @@ class GSM8KTask(BaseEvaluationTask):
 
 class AIMETask(BaseEvaluationTask):
     task_name = "aime2025"
-
-    def case_id_for(self, row: dict[str, Any]) -> str:
-        return str(row.get("id", row.get("_row_index", "unknown")))
 
     def evaluate_case(self, case: TaskCase, client: OpenAICompatibleClient) -> TaskResult:
         started_at = time.time()
@@ -348,7 +349,7 @@ class AIMETask(BaseEvaluationTask):
             case,
             started_at,
             generation,
-            status="PASSED" if is_correct else "FAILED",
+            status=Status.PASSED if is_correct else Status.FAILED,
             expected=case.payload["answer"],
             actual=actual,
         )
@@ -366,88 +367,86 @@ class AIME2026Task(AIMETask):
     task_name = "aime2026"
 
 
-class GPQATask(BaseEvaluationTask):
-    task_name = "gpqa"
+class MultipleChoiceTask(BaseEvaluationTask):
+    """Shared grading skeleton: ask the question, extract a letter, compare."""
 
-    def case_id_for(self, row: dict[str, Any]) -> str:
-        return str(row.get("id", row.get("_row_index", "unknown")))
+    domain_field = "domain"
 
-    def evaluate_case(self, case: TaskCase, client: OpenAICompatibleClient) -> TaskResult:
-        started_at = time.time()
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "Answer the multiple-choice question. Reason briefly, "
-                    "then give the final answer as \\boxed{A}, \\boxed{B}, \\boxed{C}, or \\boxed{D}."
-                ),
-            },
-            {"role": "user", "content": case.payload["problem"]},
-        ]
-        generation = client.generate(messages)
-        if generation.error:
-            return self._api_error_result(case, started_at, generation)
+    @abstractmethod
+    def system_prompt(self, row: dict[str, Any]) -> str:
+        raise NotImplementedError
 
-        expected = str(case.payload["answer"]).strip().upper()
-        actual = extract_choice_letter(generation.content)
-        is_correct = actual is not None and actual == expected
-        return self._usage_result(
-            case,
-            started_at,
-            generation,
-            status="PASSED" if is_correct else "FAILED",
-            expected=expected,
-            actual=actual,
-            metadata={"domain": case.payload.get("domain", "")},
-        )
+    @abstractmethod
+    def user_prompt(self, row: dict[str, Any]) -> str:
+        raise NotImplementedError
 
-
-class MMLUProTask(BaseEvaluationTask):
-    task_name = "mmlu_pro"
-    choice_letters = "ABCDEFGHIJ"
-
-    def case_id_for(self, row: dict[str, Any]) -> str:
-        return str(row.get("id", row.get("_row_index", "unknown")))
+    def last_letter(self, row: dict[str, Any]) -> str:
+        return "D"
 
     def evaluate_case(self, case: TaskCase, client: OpenAICompatibleClient) -> TaskResult:
         started_at = time.time()
         row = case.payload
-        options = row["options"]
-        letters = self.choice_letters[: len(options)]
-        rendered = "\n".join(f"{letter}. {text}" for letter, text in zip(letters, options, strict=False))
         messages = [
-            {
-                "role": "system",
-                "content": (
-                    "Answer the multiple-choice question. Reason briefly, then give the final "
-                    "answer as \\boxed{X}, where X is the letter of the correct option."
-                ),
-            },
-            {"role": "user", "content": f"{row['question']}\n\n{rendered}"},
+            {"role": "system", "content": self.system_prompt(row)},
+            {"role": "user", "content": self.user_prompt(row)},
         ]
         generation = client.generate(messages)
         if generation.error:
             return self._api_error_result(case, started_at, generation)
 
         expected = str(row["answer"]).strip().upper()
-        actual = extract_choice_letter(generation.content, last_letter=letters[-1])
+        actual = extract_choice_letter(generation.content, last_letter=self.last_letter(row))
         is_correct = actual is not None and actual == expected
         return self._usage_result(
             case,
             started_at,
             generation,
-            status="PASSED" if is_correct else "FAILED",
+            status=Status.PASSED if is_correct else Status.FAILED,
             expected=expected,
             actual=actual,
-            metadata={"domain": row.get("category", "")},
+            metadata={"domain": row.get(self.domain_field, "")},
         )
+
+
+class GPQATask(MultipleChoiceTask):
+    task_name = "gpqa"
+
+    def system_prompt(self, row: dict[str, Any]) -> str:
+        return (
+            "Answer the multiple-choice question. Reason briefly, "
+            "then give the final answer as \\boxed{A}, \\boxed{B}, \\boxed{C}, or \\boxed{D}."
+        )
+
+    def user_prompt(self, row: dict[str, Any]) -> str:
+        return row["problem"]
+
+
+class MMLUProTask(MultipleChoiceTask):
+    task_name = "mmlu_pro"
+    choice_letters = "ABCDEFGHIJ"
+    domain_field = "category"
+
+    def system_prompt(self, row: dict[str, Any]) -> str:
+        return (
+            "Answer the multiple-choice question. Reason briefly, then give the final "
+            "answer as \\boxed{X}, where X is the letter of the correct option."
+        )
+
+    def user_prompt(self, row: dict[str, Any]) -> str:
+        letters = self._letters(row)
+        rendered = "\n".join(f"{letter}. {text}" for letter, text in zip(letters, row["options"], strict=False))
+        return f"{row['question']}\n\n{rendered}"
+
+    def last_letter(self, row: dict[str, Any]) -> str:
+        return self._letters(row)[-1]
+
+    def _letters(self, row: dict[str, Any]) -> str:
+        return self.choice_letters[: len(row["options"])]
 
 
 class IFEvalTask(BaseEvaluationTask):
     task_name = "ifeval"
-
-    def case_id_for(self, row: dict[str, Any]) -> str:
-        return str(row.get("key", row.get("_row_index", "unknown")))
+    id_fields = ("key",)
 
     def evaluate_case(self, case: TaskCase, client: OpenAICompatibleClient) -> TaskResult:
         started_at = time.time()
@@ -469,7 +468,7 @@ class IFEvalTask(BaseEvaluationTask):
             case,
             started_at,
             generation,
-            status="PASSED" if report["prompt_strict"] else "FAILED",
+            status=Status.PASSED if report["prompt_strict"] else Status.FAILED,
             expected=f"follow all {total} instructions",
             actual=f"strict {strict}/{total}, loose {loose}/{total}",
             metadata={
@@ -483,15 +482,13 @@ class IFEvalTask(BaseEvaluationTask):
 
 class LiveCodeBenchTask(BaseEvaluationTask):
     task_name = "livecodebench"
+    id_fields = ("question_id",)
 
     system_prompt = (
         "You are a competitive programming expert. Write a complete Python 3 program "
         "that reads from standard input and prints the answer to standard output. "
         "Return only the program code, without explanations or Markdown."
     )
-
-    def case_id_for(self, row: dict[str, Any]) -> str:
-        return str(row.get("question_id", row.get("_row_index", "unknown")))
 
     def evaluate_case(self, case: TaskCase, client: OpenAICompatibleClient) -> TaskResult:
         started_at = time.time()
@@ -512,8 +509,8 @@ class LiveCodeBenchTask(BaseEvaluationTask):
             started_at,
             generation,
             status=status,
-            actual="passed" if status == "PASSED" else detail,
-            error=None if status == "PASSED" else detail,
+            actual="passed" if status == Status.PASSED else detail,
+            error=None if status == Status.PASSED else detail,
             metadata={
                 "domain": case.payload.get("difficulty", ""),
                 "platform": case.payload.get("platform", ""),
@@ -524,24 +521,9 @@ class LiveCodeBenchTask(BaseEvaluationTask):
         for index, test in enumerate(tests):
             run_status, stdout, error = run_python_with_stdin(code, test["input"], timeout)
             if run_status == "TIMEOUT":
-                return "TIMEOUT", f"test {index}: {error}"
+                return Status.TIMEOUT, f"test {index}: {error}"
             if run_status != "OK":
-                return "FAILED", f"test {index} runtime error: {error[:160]}"
+                return Status.FAILED, f"test {index} runtime error: {error[:160]}"
             if normalize_stdout(stdout) != normalize_stdout(test["output"]):
-                return "FAILED", f"test {index}: wrong answer"
-        return "PASSED", ""
-
-
-TASK_REGISTRY: dict[str, Callable[[FrameworkConfig], BaseEvaluationTask]] = {
-    HumanEvalTask.task_name: HumanEvalTask,
-    HumanEvalPlusTask.task_name: HumanEvalPlusTask,
-    MBPPTask.task_name: MBPPTask,
-    MBPPPlusTask.task_name: MBPPPlusTask,
-    GSM8KTask.task_name: GSM8KTask,
-    AIMETask.task_name: AIMETask,
-    AIME2026Task.task_name: AIME2026Task,
-    GPQATask.task_name: GPQATask,
-    MMLUProTask.task_name: MMLUProTask,
-    IFEvalTask.task_name: IFEvalTask,
-    LiveCodeBenchTask.task_name: LiveCodeBenchTask,
-}
+                return Status.FAILED, f"test {index}: wrong answer"
+        return Status.PASSED, ""

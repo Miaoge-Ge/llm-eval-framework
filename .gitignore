@@ -15,6 +15,7 @@ __pycache__/
 .trae/
 .vscode/
 .idea/
+.claude/
 .cache/
 .venv/
 .pytest_cache/

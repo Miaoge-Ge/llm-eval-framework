@@ -30,6 +30,24 @@ def test_load_framework_config_resolves_env(tmp_path, monkeypatch):
     assert config.run.output_dir == (repo_root() / "results" / "demo-model").resolve()
 
 
+def test_output_dir_slugifies_model_name(tmp_path):
+    model_config = tmp_path / "model.yaml"
+    model_config.write_text(
+        "\n".join(
+            [
+                "api_key: dummy",
+                "base_url: https://example.invalid/v1",
+                'model_name: "org/model:beta"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    config = load_framework_config(model_config, task="gsm")
+
+    assert config.model.model_name == "org/model:beta"
+    assert config.run.output_dir == (repo_root() / "results" / "org-model-beta").resolve()
+
+
 def test_load_framework_config_parses_disabled_thinking(tmp_path, monkeypatch):
     model_config = tmp_path / "model.yaml"
 

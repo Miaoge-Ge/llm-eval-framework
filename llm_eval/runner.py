@@ -3,32 +3,16 @@ from __future__ import annotations
 import concurrent.futures
 import time
 from collections import Counter
-from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 from tqdm import tqdm
 
 from .clients import OpenAICompatibleClient
-from .reporting import ResultWriter
+from .reporting import ResultWriter, RunSummary, render_markdown_report
 from .settings import FrameworkConfig
+from .status import GRADED_STATUSES, Status
 from .tasks import TASK_REGISTRY, BaseEvaluationTask, TaskCase, TaskResult
-from .utils import format_seconds, natural_sort_key
-
-
-@dataclass(frozen=True)
-class RunSummary:
-    task: str
-    model: str
-    total_cases: int
-    completed_cases: int
-    pass_rate: float
-    wall_clock_seconds: float
-    wall_clock_human: str
-    average_case_seconds: float
-    throughput_tokens_per_second: float
-    status_counts: dict[str, int]
-    token_usage: dict[str, int]
+from .utils import format_seconds
 
 
 class EvaluationRunner:
@@ -46,6 +30,8 @@ class EvaluationRunner:
     def run(self) -> tuple[RunSummary, ResultWriter]:
         task = self.build_task()
         cases = task.load_cases()
+        if self.config.run.limit is not None:
+            cases = cases[: self.config.run.limit]
         if not cases:
             raise ValueError(f"No cases found in dataset: {self.config.dataset.path}")
 
@@ -57,31 +43,35 @@ class EvaluationRunner:
         last_http_status_code: int | None = None
         started_at = time.time()
         results: list[dict[str, Any]] = []
-
-        print(
-            "\n".join(
-                [
-                    "Starting evaluation...",
-                    f"  Task: {self.config.run.task}",
-                    f"  Model: {self.config.model.model_name}",
-                    f"  Dataset: {self.config.dataset.path}",
-                    f"  Workers: {self.config.run.workers}",
-                    f"  Thinking: {self.config.run.thinking_enabled}",
-                    f"  Reasoning effort: {self.config.run.reasoning_display}",
-                    f"  Output: {self.config.run.output_dir}",
-                    f"  Total cases: {len(cases)}",
-                ]
-            ),
-            flush=True,
-        )
+        fatal_error: str | None = None
 
         with ResultWriter(self.config) as writer:
+            print(
+                "\n".join(
+                    [
+                        "Starting evaluation...",
+                        f"  Task: {self.config.run.task}",
+                        f"  Model: {self.config.model.model_name}",
+                        f"  Dataset: {self.config.dataset.path}",
+                        f"  Workers: {self.config.run.workers}",
+                        f"  Thinking: {self.config.run.thinking_enabled}",
+                        f"  Reasoning effort: {self.config.run.reasoning_display}",
+                        f"  Output: {writer.paths.root}",
+                        f"  Total cases: {len(cases)}",
+                    ]
+                ),
+                flush=True,
+            )
+
             with concurrent.futures.ThreadPoolExecutor(max_workers=self.config.run.workers) as pool:
                 future_to_case = {pool.submit(self._evaluate_case, task, case): case for case in cases}
                 with tqdm(total=len(cases), desc=self.config.run.task, unit="case", dynamic_ncols=True) as progress:
                     for future in concurrent.futures.as_completed(future_to_case):
+                        if future.cancelled():
+                            continue
                         result = future.result()
                         payload = result.to_dict()
+                        writer.write_result(payload)
                         results.append(payload)
                         totals[result.status] += 1
                         total_duration += result.duration_seconds
@@ -90,19 +80,25 @@ class EvaluationRunner:
                         completion_tokens += result.completion_tokens
                         last_http_status_code = result.http_status_code or last_http_status_code
 
+                        if result.status == Status.API_ERROR_FATAL and fatal_error is None:
+                            fatal_error = result.error or "fatal API error"
+                            for pending in future_to_case:
+                                pending.cancel()
+                            progress.write(f"Fatal API error, cancelling remaining cases: {fatal_error}")
+
                         progress.update(1)
                         progress.set_postfix_str(
                             "passed={passed} failed={failed} http={http}".format(
-                                passed=totals.get("PASSED", 0),
-                                failed=totals.get("FAILED", 0),
+                                passed=totals.get(Status.PASSED, 0),
+                                failed=totals.get(Status.FAILED, 0),
                                 http=last_http_status_code if last_http_status_code is not None else "-",
                             ),
                             refresh=False,
                         )
 
             wall_clock_seconds = time.time() - started_at
-            graded = totals["PASSED"] + totals["FAILED"] + totals["TIMEOUT"]
-            pass_rate = (totals["PASSED"] / graded) if graded else 0.0
+            graded = sum(totals[status] for status in GRADED_STATUSES)
+            pass_rate = (totals[Status.PASSED] / graded) if graded else 0.0
             summary = RunSummary(
                 task=self.config.run.task,
                 model=self.config.model.model_name,
@@ -120,13 +116,7 @@ class EvaluationRunner:
                     "total_tokens": total_tokens,
                 },
             )
-            writer.write_report(
-                self._build_markdown_report(
-                    summary=summary,
-                    output_dir=writer.paths.root,
-                    results=results,
-                )
-            )
+            writer.write_report(render_markdown_report(summary=summary, config=self.config, results=results))
             return summary, writer
 
     def _evaluate_case(self, task: BaseEvaluationTask, case: TaskCase) -> TaskResult:
@@ -135,130 +125,7 @@ class EvaluationRunner:
         except Exception as exc:
             return TaskResult(
                 case_id=case.case_id,
-                status="INTERNAL_ERROR",
+                status=Status.INTERNAL_ERROR,
                 duration_seconds=0.0,
                 error=str(exc),
             )
-
-    def _build_markdown_report(
-        self,
-        summary: RunSummary,
-        output_dir: Path,
-        results: list[dict[str, Any]],
-    ) -> str:
-        usage = summary.token_usage
-        generated_at = time.strftime("%Y-%m-%d %H:%M:%S")
-        lines = [
-            f"# Evaluation Report - {summary.task}",
-            "",
-            f"_Generated at {generated_at}_",
-            "",
-            "## Overview",
-            "",
-            "| Field | Value |",
-            "| --- | --- |",
-            f"| Task | `{summary.task}` |",
-            f"| Model | `{summary.model}` |",
-            f"| Dataset | `{self.config.dataset.path}` |",
-            f"| Workers | `{self.config.run.workers}` |",
-            f"| Thinking enabled | `{self.config.run.thinking_enabled}` |",
-            f"| Reasoning effort | `{self.config.run.reasoning_display}` |",
-            "",
-            "## Metrics",
-            "",
-            "| Metric | Value |",
-            "| --- | --- |",
-            f"| Pass rate | **{summary.pass_rate:.2%}** |",
-            f"| Total cases | {summary.total_cases} |",
-            f"| Completed cases | {summary.completed_cases} |",
-            f"| Wall clock | {summary.wall_clock_human} |",
-            f"| Average case time | {summary.average_case_seconds:.2f}s |",
-            f"| Throughput | {summary.throughput_tokens_per_second:.1f} tokens/s |",
-            f"| Prompt tokens | {usage.get('prompt_tokens', 0):,} |",
-            f"| Completion tokens | {usage.get('completion_tokens', 0):,} |",
-            f"| Total tokens | {usage.get('total_tokens', 0):,} |",
-            "",
-            "### Status counts",
-            "",
-            "| Status | Count |",
-            "| --- | --- |",
-        ]
-        for status, count in sorted(summary.status_counts.items()):
-            lines.append(f"| {status} | {count} |")
-
-        domain_rows = _domain_breakdown(results)
-        if domain_rows:
-            lines.extend(
-                [
-                    "",
-                    "### Accuracy by domain",
-                    "",
-                    "| Domain | Passed | Total | Pass rate |",
-                    "| --- | --- | --- | --- |",
-                ]
-            )
-            for domain, passed, total in domain_rows:
-                rate = passed / total if total else 0.0
-                lines.append(f"| {domain} | {passed} | {total} | {rate:.2%} |")
-
-        lines.extend(
-            [
-                "",
-                "## Results",
-                "",
-                "| # | Case | Status | Time | Tokens | Detail |",
-                "| --- | --- | --- | --- | --- | --- |",
-            ]
-        )
-        ordered = sorted(results, key=lambda r: natural_sort_key(str(r.get("case_id", ""))))
-        for index, item in enumerate(ordered, start=1):
-            lines.append(
-                "| {idx} | {case} | {status} | {time} | {tokens} | {detail} |".format(
-                    idx=index,
-                    case=_cell(item.get("case_id", "unknown")),
-                    status=item.get("status", "unknown"),
-                    time=item.get("duration_human", "n/a"),
-                    tokens=item.get("total_tokens", 0),
-                    detail=_cell(_detail(item)),
-                )
-            )
-
-        return "\n".join(lines).strip() + "\n"
-
-
-def _domain_breakdown(results: list[dict[str, Any]]) -> list[tuple[str, int, int]]:
-    stats: dict[str, list[int]] = {}
-    for item in results:
-        domain = (item.get("metadata") or {}).get("domain")
-        if not domain:
-            continue
-        entry = stats.setdefault(domain, [0, 0])
-        entry[1] += 1
-        if item.get("status") == "PASSED":
-            entry[0] += 1
-    return [(domain, passed, total) for domain, (passed, total) in sorted(stats.items())]
-
-
-def _shorten(value: str, limit: int = 160) -> str:
-    compact = " ".join(str(value).split())
-    if len(compact) <= limit:
-        return compact
-    return compact[: limit - 3] + "..."
-
-
-def _cell(value: Any) -> str:
-    text = _shorten(str(value)).replace("|", "\\|")
-    return text or "n/a"
-
-
-def _detail(item: dict[str, Any]) -> str:
-    if item.get("status") == "PASSED":
-        return "passed"
-    error = item.get("error")
-    if error:
-        return str(error)
-    expected = item.get("expected")
-    actual = item.get("actual")
-    if expected is not None or actual is not None:
-        return f"expected {expected} -> got {actual}"
-    return "n/a"

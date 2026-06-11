@@ -6,7 +6,7 @@ from typing import Any
 
 import yaml
 
-from .utils import parse_bool, repo_root, resolve_env_placeholders
+from .utils import parse_bool, repo_root, resolve_env_placeholders, slugify
 
 DEFAULT_DATASET_PATHS = {
     "humaneval": Path("datasets/HumanEval.jsonl"),
@@ -45,6 +45,7 @@ class RunConfig:
     execution_timeout_seconds: int = 20
     thinking_enabled: bool = False
     reasoning_effort: str | None = None
+    limit: int | None = None
 
     @property
     def reasoning_display(self) -> str:
@@ -70,6 +71,8 @@ class FrameworkConfig:
 def load_framework_config(
     model_config_path: str | Path | None = None,
     task: str | None = None,
+    workers: int | None = None,
+    limit: int | None = None,
 ) -> FrameworkConfig:
     root = repo_root()
     model_file = _resolve_file_path(model_config_path, root / "configs" / "model.yaml")
@@ -86,11 +89,12 @@ def load_framework_config(
 
     run = RunConfig(
         task=task_name,
-        workers=max(1, int(model_data.get("workers", 10))),
-        output_dir=(root / "results" / _require_text(model.model_name, "model_name")).resolve(),
+        workers=max(1, int(workers if workers is not None else model_data.get("workers", 10))),
+        output_dir=(root / "results" / slugify(model.model_name)).resolve(),
         execution_timeout_seconds=max(1, int(model_data.get("execution_timeout_seconds", 20))),
         thinking_enabled=parse_bool(model_data.get("thinking_enabled", False), default=False),
         reasoning_effort=_optional_text(model_data.get("reasoning_effort")),
+        limit=max(1, int(limit)) if limit is not None else None,
     )
 
     return FrameworkConfig(

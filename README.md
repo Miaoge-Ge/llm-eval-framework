@@ -23,9 +23,12 @@ A clean, engineering-first evaluation framework for LLM benchmarks. It uses `uv`
 llm_eval/
   cli.py
   clients.py
-  reporting.py
+  execution.py         # subprocess execution of generated code
+  extraction.py        # answer extraction (code blocks, \boxed{}, letters, numbers)
+  reporting.py         # run persistence (JSONL + config snapshot) and Markdown rendering
   runner.py
   settings.py
+  status.py            # canonical case-status constants
   tasks.py
   utils.py
   ifeval/              # vendored Google IFEval checkers + scoring glue
@@ -97,7 +100,7 @@ Prefer `${ENV_VAR}` placeholders for secrets so the API key is never written to 
 | `thinking_enabled` | `true`/`false` (also accepts `enabled`/`disabled`) |
 | `reasoning_effort` | `low`/`medium`/`high`/`max`, sent only when thinking is enabled |
 
-The output directory is fixed to `results/<model_name>/`.
+Each run writes to its own timestamped directory under `results/<model_name>/<task>/` (the model name is slugified, so ids like `org/model:beta` are safe on every platform).
 
 ## CLI
 
@@ -108,11 +111,14 @@ uv run llm-eval run --config configs/model.yaml --task gpqa
 # equivalent module form
 uv run python -m llm_eval run --config configs/model.yaml --task gsm
 
+# smoke test: only the first 5 cases, with 2 workers
+uv run llm-eval run --config configs/model.yaml --task gsm --limit 5 --workers 2
+
 # list all available tasks
 uv run llm-eval run --list-tasks
 ```
 
-`--config` defaults to `configs/model.yaml` and `--task` defaults to `humaneval`.
+`--config` defaults to `configs/model.yaml` and `--task` defaults to `humaneval`. `--workers` overrides the config value; `--limit N` runs only the first N cases — handy for smoke-testing a new endpoint before a full run.
 
 ### Run every benchmark
 
@@ -198,19 +204,26 @@ The MCQ task asks the model to output `\boxed{A/B/C/D}` and grades by exact lett
 
 ## Output
 
-Each run writes a single self-contained Markdown report:
+Each run writes to its own timestamped directory:
 
 ```text
-results/<model_name>/<task>_report.md
+results/<model_name>/<task>/<YYYYMMDD-HHMMSS>/
+  results.jsonl   # one line per case, written incrementally as cases finish
+  config.json     # snapshot of the effective config (API key masked)
+  report.md       # the human-readable report
 ```
 
-It contains:
+`results.jsonl` is flushed after every case, so a crashed or aborted run keeps everything graded so far, and the raw records stay available for re-analysis. Reruns never overwrite earlier results.
+
+`report.md` contains:
 
 - **Overview** — task, model, dataset, workers, thinking mode
-- **Metrics** — pass rate, wall clock, throughput, prompt/completion/total tokens
+- **Metrics** — pass rate, total/completed/graded cases, wall clock, throughput, prompt/completion/total tokens (graded = passed + failed + timeout; API errors are excluded from the pass-rate denominator)
 - **Status counts** — how many cases passed, failed, errored, etc.
 - **Accuracy by domain** — per-subject breakdown (knowledge tasks only)
 - **Results** — a per-case table with status, time, tokens, and a detail column
+
+> **Security note:** code-generation tasks execute model-generated Python directly on your machine with no sandboxing, limited only by `execution_timeout_seconds`. Only evaluate models and datasets you trust, or run inside a container/VM.
 
 ## Development
 

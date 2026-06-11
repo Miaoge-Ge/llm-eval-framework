@@ -4,7 +4,8 @@ import argparse
 import sys
 from pathlib import Path
 
-from .runner import EvaluationRunner, RunSummary
+from .reporting import RunSummary
+from .runner import EvaluationRunner
 from .settings import load_framework_config
 from .tasks import DEFAULT_TASK_NAME, TASK_REGISTRY
 
@@ -16,6 +17,8 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser = subparsers.add_parser("run", help="Run an evaluation")
     run_parser.add_argument("--config", default="configs/model.yaml", help="Path to model config YAML")
     run_parser.add_argument("--task", default=DEFAULT_TASK_NAME, help="Task name")
+    run_parser.add_argument("--workers", type=int, default=None, help="Override worker count from config")
+    run_parser.add_argument("--limit", type=int, default=None, help="Only run the first N cases (smoke test)")
     run_parser.add_argument("--list-tasks", action="store_true", help="List available tasks and exit")
 
     return parser
@@ -38,6 +41,8 @@ def main(argv: list[str] | None = None) -> int:
         config = load_framework_config(
             model_config_path=args.config,
             task=args.task,
+            workers=args.workers,
+            limit=args.limit,
         )
     except (ValueError, FileNotFoundError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
